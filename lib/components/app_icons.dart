@@ -262,6 +262,7 @@ class HeroAppIcons {
   const HeroAppIcons._();
 
   static const angleDown = AppIconData(HeroiconsOutline.chevronDown);
+  static const angleUp = AppIconData(HeroiconsOutline.chevronUp);
   static const arrowDown = AppIconData(HeroiconsOutline.arrowDown);
   static const arrowLeft = AppIconData(HeroiconsOutline.arrowLeft);
   static const arrowRight = AppIconData(HeroiconsOutline.arrowRight);

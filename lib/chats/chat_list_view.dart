@@ -407,6 +407,78 @@ bool chatListShouldHidePullDownArchive({
   required double rowHeight,
 }) => scrollPixels - minScrollExtent > rowHeight * 0.5;
 
+/// Distance past the resting top of the chat list before the scroll-to-top
+/// control is shown. The same slack the transcript uses for its near-edge
+/// jump button.
+const double chatListScrollToTopThreshold = 80;
+
+/// Whether the chat list has left the top far enough to offer a jump back.
+///
+/// Pull-down overscroll stays hidden: the control returns from older chats,
+/// and the newest rows are already on screen at the top.
+bool chatListShouldShowScrollToTop({
+  required double scrollPixels,
+  double minScrollExtent = 0,
+  double threshold = chatListScrollToTopThreshold,
+}) => scrollPixels - minScrollExtent > threshold;
+
+/// Round control that jumps the chat list back to its newest rows.
+///
+/// Matches the transcript return-to-latest button, with the chevron pointing
+/// up because this list keeps the newest chats at the top.
+class ChatListScrollToTopButton extends StatelessWidget {
+  const ChatListScrollToTopButton({super.key, required this.onTap});
+
+  static const buttonKey = ValueKey('chat-list-scroll-to-top');
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final label = AppStringKeys.chatListScrollToTop.l10n(context);
+    return Tooltip(
+      message: label,
+      waitDuration: const Duration(milliseconds: 450),
+      excludeFromSemantics: true,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            key: buttonKey,
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: c.navBar,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.divider, width: 0.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: AppIcon(
+                HeroAppIcons.angleUp,
+                size: 22,
+                color: c.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Keeps leading pull-down content visually fixed while the surrounding list
 /// uses bouncing scroll physics.
 class ChatListTopOverscrollPin extends StatelessWidget {
@@ -977,6 +1049,7 @@ class _ChatListViewState extends State<ChatListView>
   int _lastVisibleRows = 1;
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
   final ScrollController _folderTabScrollController = ScrollController();
+  final ValueNotifier<bool> _showScrollToTop = ValueNotifier(false);
   final Map<int?, GlobalKey> _folderTabKeys = {};
   final Map<int?, GlobalKey> _sideFolderKeys = {};
   bool _foldersInSideRail = false;
@@ -1106,6 +1179,17 @@ class _ChatListViewState extends State<ChatListView>
     if (position.extentAfter < rowHeight * 8) {
       _model.loadMore();
     }
+    _syncScrollToTopVisibility(position);
+  }
+
+  void _syncScrollToTopVisibility(ScrollPosition position) {
+    if (!position.hasContentDimensions) return;
+    final show = chatListShouldShowScrollToTop(
+      scrollPixels: position.pixels,
+      minScrollExtent: position.minScrollExtent,
+    );
+    if (_showScrollToTop.value == show) return;
+    _showScrollToTop.value = show;
   }
 
   @override
@@ -1121,6 +1205,7 @@ class _ChatListViewState extends State<ChatListView>
     _folderDrag.dispose();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _showScrollToTop.dispose();
     _folderTabScrollController.dispose();
     _model.removeListener(_onModel);
     _model.dispose();
@@ -1817,6 +1902,17 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
+  void _scrollListToTop() {
+    if (!_scrollController.hasClients) return;
+    if (AppMotion.isReduced(context)) {
+      final position = _scrollController.position;
+      if (!position.hasContentDimensions || position.pixels <= 0) return;
+      position.jumpTo(0);
+      return;
+    }
+    _animateListTo(0);
+  }
+
   void _animateListTo(double target) {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
@@ -1897,6 +1993,17 @@ class _ChatListViewState extends State<ChatListView>
                 ),
               ),
             ],
+          ),
+        ),
+        Positioned(
+          right: 16,
+          bottom: 12 + BottomBarInset.of(context),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: _showScrollToTop,
+            builder: (context, show, _) {
+              if (!show) return const SizedBox.shrink();
+              return ChatListScrollToTopButton(onTap: _scrollListToTop);
+            },
           ),
         ),
         _plusMenuOverlay(visible: _showPlusMenu),
