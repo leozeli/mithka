@@ -105,6 +105,7 @@ Future<void> showChatListPreview(
   required List<ChatListPreviewAction> actions,
   String? meName,
   TdFileRef? mePhoto,
+  bool locallyPinned = false,
   ChatListPreviewLoader? loadMessages,
 }) async {
   unawaited(HapticFeedback.mediumImpact());
@@ -118,6 +119,7 @@ Future<void> showChatListPreview(
       actions: actions,
       meName: meName,
       mePhoto: mePhoto,
+      locallyPinned: locallyPinned,
       loadMessages:
           loadMessages ?? () => loadChatListPreviewMessages(chat: chat),
     ),
@@ -246,6 +248,7 @@ class ChatListPreviewSurface extends StatefulWidget {
     required this.loadMessages,
     this.meName,
     this.mePhoto,
+    this.locallyPinned = false,
   });
 
   final ChatSummary chat;
@@ -253,6 +256,7 @@ class ChatListPreviewSurface extends StatefulWidget {
   final ChatListPreviewLoader loadMessages;
   final String? meName;
   final TdFileRef? mePhoto;
+  final bool locallyPinned;
 
   @override
   State<ChatListPreviewSurface> createState() => _ChatListPreviewSurfaceState();
@@ -409,9 +413,13 @@ class _ChatListPreviewSurfaceState extends State<ChatListPreviewSurface> {
             const SizedBox(width: 8),
             AppIcon(HeroAppIcons.bellSlash, size: 17, color: c.textTertiary),
           ],
-          if (widget.chat.isPinned) ...[
+          if (widget.chat.isPinned || widget.locallyPinned) ...[
             const SizedBox(width: 8),
-            AppPinIcon(size: 15, color: c.textTertiary),
+            AppPinIcon(
+              size: 15,
+              color: c.textTertiary,
+              filled: widget.locallyPinned,
+            ),
           ],
         ],
       ),

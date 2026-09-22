@@ -1075,6 +1075,7 @@ class _ChatListViewState extends State<ChatListView>
       CurveTween(curve: AppMotion.standard),
     );
     _folderSettleController.addListener(_onFolderSettleTick);
+    _model.prepareLocalPinAccount(context.read<AccountStore?>()?.activeUserId);
     _model.onAppear();
     _model.addListener(_onModel);
     widget.controller?.addListener(_onControllerRequest);
@@ -2668,7 +2669,11 @@ class _ChatListViewState extends State<ChatListView>
                       : listIndex;
                   final entry = entries[entryIndex];
                   return switch (entry) {
-                    CommunityChatEntry(:final chat) => _peekRow(chat),
+                    CommunityChatEntry(:final chat) => _peekRow(
+                      chat,
+                      locallyPinned:
+                          filter.isAll && _model.isLocallyPinned(chat.id),
+                    ),
                     CommunityGroupEntry() => _communityRow(entry),
                   };
                 },
@@ -2680,12 +2685,16 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  Widget _peekRow(ChatSummary chat) {
+  Widget _peekRow(ChatSummary chat, {required bool locallyPinned}) {
     final selected = widget.selectedChatId == chat.id;
     return ChatListSelectionHighlight(
       key: ValueKey(chat.id),
       selected: selected,
-      child: ChatRowView(chat: chat, selected: selected),
+      child: ChatRowView(
+        chat: chat,
+        selected: selected,
+        locallyPinned: locallyPinned,
+      ),
     );
   }
 
@@ -2941,6 +2950,42 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
+  List<SwipeActionItem> _rowSwipeActions(
+    ChatSummary chat, {
+    required bool locallyPinned,
+  }) {
+    final pin = SwipeActionItem(
+      title: chat.isPinned
+          ? AppStringKeys.chatListUnpin
+          : AppStringKeys.chatInfoPin,
+      color: chat.isPinned ? const Color(0xFF8E8E93) : const Color(0xFF3C8CF0),
+      onTap: () => _model.togglePin(chat),
+    );
+    final unread = SwipeActionItem(
+      title: AppStringKeys.chatListMarkUnread,
+      color: const Color(0xFFF5A623),
+      onTap: () => _model.markUnread(chat),
+    );
+    final remove = SwipeActionItem(
+      title: _deleteOrLeaveTitle(chat),
+      color: const Color(0xFFFA5151),
+      onTap: () => _confirmDeleteChat(chat),
+    );
+    if (!_model.isAllFilter) {
+      return chat.isPinned ? [unread, pin, remove] : [pin, unread, remove];
+    }
+    final local = SwipeActionItem(
+      title: locallyPinned
+          ? AppStringKeys.chatListLocalUnpin
+          : AppStringKeys.chatListLocalPin,
+      color: const Color(0xFF5856D6),
+      onTap: () => unawaited(_model.toggleLocalPin(chat)),
+    );
+    return chat.isPinned
+        ? [unread, local, pin, remove]
+        : [local, pin, unread, remove];
+  }
+
   Widget _swipeRow(ChatSummary chat) {
     final selected = widget.selectedChatId == chat.id;
     final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
@@ -2954,41 +2999,8 @@ class _ChatListViewState extends State<ChatListView>
       mode: swipeMode,
       multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
     );
-    final actions = chat.isPinned
-        ? [
-            SwipeActionItem(
-              title: AppStringKeys.chatListMarkUnread,
-              color: const Color(0xFFF5A623),
-              onTap: () => _model.markUnread(chat),
-            ),
-            SwipeActionItem(
-              title: AppStringKeys.chatListUnpin,
-              color: const Color(0xFF8E8E93),
-              onTap: () => _model.togglePin(chat),
-            ),
-            SwipeActionItem(
-              title: _deleteOrLeaveTitle(chat),
-              color: const Color(0xFFFA5151),
-              onTap: () => _confirmDeleteChat(chat),
-            ),
-          ]
-        : [
-            SwipeActionItem(
-              title: AppStringKeys.chatInfoPin,
-              color: const Color(0xFF3C8CF0),
-              onTap: () => _model.togglePin(chat),
-            ),
-            SwipeActionItem(
-              title: AppStringKeys.chatListMarkUnread,
-              color: const Color(0xFFF5A623),
-              onTap: () => _model.markUnread(chat),
-            ),
-            SwipeActionItem(
-              title: _deleteOrLeaveTitle(chat),
-              color: const Color(0xFFFA5151),
-              onTap: () => _confirmDeleteChat(chat),
-            ),
-          ];
+    final locallyPinned = _model.isAllFilter && _model.isLocallyPinned(chat.id);
+    final actions = _rowSwipeActions(chat, locallyPinned: locallyPinned);
     return ChatSwipeRow(
       key: ValueKey(chat.id),
       rowId: chat.id,
@@ -3012,6 +3024,7 @@ class _ChatListViewState extends State<ChatListView>
         child: ChatRowView(
           chat: chat,
           selected: selected,
+          locallyPinned: locallyPinned,
           onClearUnread: () => _model.markRead(chat),
         ),
       ),
@@ -3049,11 +3062,15 @@ class _ChatListViewState extends State<ChatListView>
       builder: (_) => DesktopChatContextMenu(
         anchor: anchor,
         isPinned: chat.isPinned,
+        isLocallyPinned: _model.isLocallyPinned(chat.id),
         hasUnread: chat.unreadCount > 0 || chat.isMarkedUnread,
         isMuted: chat.isMuted,
         deleteOrLeaveLabel: _deleteOrLeaveTitle(chat),
         onDismiss: dismiss,
         onTogglePin: () => _model.togglePin(chat),
+        onToggleLocalPin: _model.isAllFilter
+            ? () => unawaited(_model.toggleLocalPin(chat))
+            : null,
         onToggleRead: () => chat.unreadCount > 0 || chat.isMarkedUnread
             ? _model.markRead(chat)
             : _model.markUnread(chat),
@@ -3108,6 +3125,7 @@ class _ChatListViewState extends State<ChatListView>
       showChatListPreview(
         context,
         chat: chat,
+        locallyPinned: _model.isAllFilter && _model.isLocallyPinned(chat.id),
         meName: activeAccount?.name,
         mePhoto: avatarPath == null || avatarPath.isEmpty
             ? null
@@ -3139,6 +3157,14 @@ class _ChatListViewState extends State<ChatListView>
             icon: HeroAppIcons.thumbtack,
             onSelected: () => _model.togglePin(chat),
           ),
+          if (_model.isAllFilter)
+            ChatListPreviewAction(
+              label: _model.isLocallyPinned(chat.id)
+                  ? AppStringKeys.chatListLocalUnpin
+                  : AppStringKeys.chatListLocalPin,
+              icon: HeroAppIcons.thumbtack,
+              onSelected: () => unawaited(_model.toggleLocalPin(chat)),
+            ),
           ChatListPreviewAction(
             label: chat.isMuted
                 ? AppStringKeys.chatUnmute
@@ -3845,6 +3871,8 @@ class DesktopChatContextMenu extends StatelessWidget {
     required this.onToggleRead,
     required this.onToggleMute,
     required this.onDeleteOrLeave,
+    this.isLocallyPinned = false,
+    this.onToggleLocalPin,
     this.onOpenSeparateWindow,
   });
 
@@ -3856,20 +3884,26 @@ class DesktopChatContextMenu extends StatelessWidget {
 
   final Offset anchor;
   final bool isPinned;
+  final bool isLocallyPinned;
   final bool hasUnread;
   final bool isMuted;
   final String deleteOrLeaveLabel;
   final VoidCallback onDismiss;
   final VoidCallback onTogglePin;
+  final VoidCallback? onToggleLocalPin;
   final VoidCallback onToggleRead;
   final VoidCallback? onOpenSeparateWindow;
   final VoidCallback onToggleMute;
   final VoidCallback onDeleteOrLeave;
 
+  int get _rowCount {
+    var count = onOpenSeparateWindow == null ? 4 : 5;
+    if (onToggleLocalPin != null) count++;
+    return count;
+  }
+
   double get _menuHeight =>
-      verticalPadding * 2 +
-      rowHeight * (onOpenSeparateWindow == null ? 4 : 5) +
-      dividerHeight;
+      verticalPadding * 2 + rowHeight * _rowCount + dividerHeight;
 
   void _select(VoidCallback action) {
     onDismiss();
@@ -3940,6 +3974,17 @@ class DesktopChatContextMenu extends StatelessWidget {
                                 : AppStringKeys.chatInfoPin,
                             onTap: () => _select(onTogglePin),
                           ),
+                          if (onToggleLocalPin case final toggleLocal?)
+                            _DesktopChatContextMenuItem(
+                              key: const ValueKey(
+                                'desktop-chat-context-local-pin',
+                              ),
+                              icon: HeroAppIcons.thumbtack,
+                              label: isLocallyPinned
+                                  ? AppStringKeys.chatListLocalUnpin
+                                  : AppStringKeys.chatListLocalPin,
+                              onTap: () => _select(toggleLocal),
+                            ),
                           _DesktopChatContextMenuItem(
                             key: const ValueKey('desktop-chat-context-read'),
                             icon: hasUnread

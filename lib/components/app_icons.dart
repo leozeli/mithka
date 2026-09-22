@@ -142,10 +142,18 @@ class _AppSeekTenIconPainter extends CustomPainter {
 /// chats look like Saved Messages. This compact outline keeps the visual
 /// language of the owned icon set without falling back to platform icons.
 class AppPinIcon extends StatelessWidget {
-  const AppPinIcon({super.key, this.size = 16, this.color});
+  const AppPinIcon({
+    super.key,
+    this.size = 16,
+    this.color,
+    this.filled = false,
+  });
 
   final double size;
   final Color? color;
+
+  /// Filled head marks a device-local pin. Server pins stay an outline.
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
@@ -153,7 +161,9 @@ class AppPinIcon extends StatelessWidget {
         color ?? IconTheme.of(context).color ?? const Color(0xFF000000);
     return SizedBox.square(
       dimension: size,
-      child: CustomPaint(painter: _AppPinIconPainter(color: resolvedColor)),
+      child: CustomPaint(
+        painter: _AppPinIconPainter(color: resolvedColor, filled: filled),
+      ),
     );
   }
 }
@@ -224,9 +234,10 @@ class _AppArrowUpToLineIconPainter extends CustomPainter {
 }
 
 class _AppPinIconPainter extends CustomPainter {
-  const _AppPinIconPainter({required this.color});
+  const _AppPinIconPainter({required this.color, required this.filled});
 
   final Color color;
+  final bool filled;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -245,6 +256,14 @@ class _AppPinIconPainter extends CustomPainter {
       ..lineTo(size.width * 0.22, size.height * 0.57)
       ..lineTo(size.width * 0.36, size.height * 0.42)
       ..close();
+    if (filled) {
+      canvas.drawPath(
+        body,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.fill,
+      );
+    }
     canvas.drawPath(body, paint);
     canvas.drawLine(
       Offset(size.width * 0.50, size.height * 0.57),
@@ -255,7 +274,7 @@ class _AppPinIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_AppPinIconPainter oldDelegate) =>
-      oldDelegate.color != color;
+      oldDelegate.color != color || oldDelegate.filled != filled;
 }
 
 class HeroAppIcons {
