@@ -140,9 +140,18 @@ Future<void> main(List<String> arguments) async {
     if (utilityArguments != null) {
       configureAppImageCache();
       _initializeVideoBackend(installGlobalLogHandler: false);
-      await DesktopUtilityWindowService.instance.configureChildProxy(
-        utilityArguments,
-      );
+      try {
+        await DesktopUtilityWindowService.instance.configureChildProxy(
+          utilityArguments,
+        );
+      } on Object catch (error, stackTrace) {
+        debugPrint(
+          'Desktop utility window aborted: primary transport unavailable '
+          '($error)\n$stackTrace',
+        );
+        // configureChildProxy already closed the orphan child window.
+        return;
+      }
       final prefs = await SharedPreferences.getInstance();
       DesktopHotkeyController.initializeShared(prefs, replace: true);
       await Future.wait<void>([

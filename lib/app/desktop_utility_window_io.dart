@@ -20,12 +20,47 @@ const _openUtilityMethod = 'mithka.utility.open';
 const _chatOpenUtilityMethod = 'mithka.chat.utility.open';
 const _openPrimaryChatMethod = 'mithka.utility.primary-chat.open';
 
+/// Child engines on Linux can spend several seconds in Impeller/ATK init
+/// before Dart reaches [subscribe], while `createWindow` may still be
+/// returning on the primary. Bound the local handshake well above that boot
+/// window without hanging forever.
+@visibleForTesting
+const desktopUtilitySubscribeDeadline = Duration(seconds: 15);
+
+@visibleForTesting
+const desktopUtilitySubscribeAttemptTimeout = Duration(seconds: 3);
+
+@visibleForTesting
+const desktopUtilitySubscribeRetryDelay = Duration(milliseconds: 75);
+
+@visibleForTesting
+const desktopUtilitySubscribeRegistrationWait = Duration(seconds: 12);
+
+@visibleForTesting
+const desktopUtilityOpenSubscribeTimeout = Duration(seconds: 20);
+
 const _blockedRequestTypes = <String>{
   'close',
   'destroy',
   'logOut',
   'setTdlibParameters',
 };
+
+/// Freshly registered children can appear in the primary registry before the
+/// native `activeWindows` list catches up. Keep those ids until they activate
+/// once so an early prune does not drop the subscribe handshake.
+@visibleForTesting
+bool desktopUtilityWindowShouldRetainWhileActivating({
+  required bool isActive,
+  required bool isPendingActivation,
+}) => isActive || isPendingActivation;
+
+@visibleForTesting
+bool desktopUtilitySubscribeDeadlineAllowsRetry({
+  required DateTime startedAt,
+  required DateTime now,
+  Duration deadline = desktopUtilitySubscribeDeadline,
+}) => !now.isAfter(startedAt.add(deadline));
 
 bool get supportsDesktopUtilityWindows =>
     Platform.isLinux || Platform.isMacOS || Platform.isWindows;
@@ -140,7 +175,20 @@ Future<void> configureDesktopUtilityChildProxy(
       updates: proxy.updates,
     ),
   );
-  await proxy.subscribe();
+  try {
+    await proxy.subscribe();
+  } on Object catch (error, stackTrace) {
+    await proxy.disposeFailedHandshake();
+    await closeCurrentDesktopUtilityWindow();
+    assert(() {
+      debugPrint('Desktop utility child subscribe failed: $error\n$stackTrace');
+      return true;
+    }());
+    // Re-throw so the child `main` branch can exit without runApp. Callers
+    // must catch this — an unhandled exception here crashes the orphan
+    // window process.
+    rethrow;
+  }
 }
 
 Future<void> closeCurrentDesktopUtilityWindow() async {
@@ -315,6 +363,9 @@ class _DesktopUtilityMainBridge with WindowListener {
   final Map<int, int> _clientIdByWindow = {};
   final Map<int, TdAccountLease> _accountLeasesByWindow = {};
   final Set<int> _subscribedWindows = {};
+  final Set<int> _pendingActivationWindows = {};
+  final Map<int, Completer<void>> _registrationWaiters = {};
+  final Map<int, Completer<void>> _subscribeWaiters = {};
   final Map<int, List<Map<String, dynamic>>> _pendingUpdatesByWindow = {};
   StreamSubscription<Map<String, dynamic>>? _tdUpdates;
   Future<void> Function()? _onSettingsChanged;
@@ -370,6 +421,15 @@ class _DesktopUtilityMainBridge with WindowListener {
     _argumentsByWindow.clear();
     _clientIdByWindow.clear();
     _subscribedWindows.clear();
+    _pendingActivationWindows.clear();
+    for (final waiter in _registrationWaiters.values) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+    _registrationWaiters.clear();
+    for (final waiter in _subscribeWaiters.values) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+    _subscribeWaiters.clear();
     _registry.clear();
     _onSettingsChanged = null;
     _accountUserIdForSlot = null;
@@ -406,7 +466,10 @@ class _DesktopUtilityMainBridge with WindowListener {
     MultiWindowManager? createdWindow;
     try {
       final active = await MultiWindowManager.current.getActiveWindowIds();
-      final existing = _registry.activeWindowFor(arguments.key, active);
+      final existing = _registry.activeWindowFor(arguments.key, {
+        ...active,
+        ..._pendingActivationWindows,
+      });
       if (existing != null) {
         final window = MultiWindowManager.fromWindowId(existing);
         await window.show();
@@ -426,6 +489,13 @@ class _DesktopUtilityMainBridge with WindowListener {
       );
       await createdWindow.show();
       await createdWindow.focus();
+      // The child may still be finishing Impeller boot and the TD subscribe
+      // handshake. Wait for a successful subscribe so callers can fall back
+      // when the orphan child never connects.
+      final subscribed = await _waitUntilSubscribed(createdWindow.id);
+      if (!subscribed) {
+        throw StateError('Desktop utility child subscribe timed out');
+      }
       return true;
     } on Object catch (error) {
       final failedWindow = createdWindow;
@@ -456,8 +526,62 @@ class _DesktopUtilityMainBridge with WindowListener {
     _argumentsByWindow[windowId] = arguments;
     _clientIdByWindow[windowId] = lease.clientId;
     _accountLeasesByWindow[windowId] = lease;
+    _pendingActivationWindows.add(windowId);
     _registry.register(arguments.key, windowId);
+    final waiter = _registrationWaiters.remove(windowId);
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
     return true;
+  }
+
+  Future<bool> _waitUntilSubscribed(int windowId) async {
+    if (_subscribedWindows.contains(windowId)) return true;
+    final waiter = _subscribeWaiters.putIfAbsent(windowId, Completer<void>.new);
+    try {
+      await waiter.future.timeout(desktopUtilityOpenSubscribeTimeout);
+    } on Object {
+      _subscribeWaiters.remove(windowId);
+      return _subscribedWindows.contains(windowId);
+    }
+    return _subscribedWindows.contains(windowId);
+  }
+
+  Future<DesktopUtilityWindowArguments?> _awaitRegisteredRequest(
+    int windowId,
+    Object? source,
+  ) async {
+    final immediate = _registeredRequest(windowId, source);
+    if (immediate != null) return immediate;
+    final startedAt = DateTime.now();
+    while (desktopUtilitySubscribeDeadlineAllowsRetry(
+      startedAt: startedAt,
+      now: DateTime.now(),
+      deadline: desktopUtilitySubscribeRegistrationWait,
+    )) {
+      final waiter = _registrationWaiters.putIfAbsent(
+        windowId,
+        Completer<void>.new,
+      );
+      final remaining =
+          desktopUtilitySubscribeRegistrationWait -
+          DateTime.now().difference(startedAt);
+      if (remaining <= Duration.zero) break;
+      try {
+        await waiter.future.timeout(
+          remaining < const Duration(milliseconds: 200)
+              ? remaining
+              : const Duration(milliseconds: 200),
+        );
+      } on Object {
+        // Keep polling until the registration wait budget is spent.
+      }
+      if (waiter.isCompleted) {
+        _registrationWaiters.remove(windowId);
+      }
+      final registered = _registeredRequest(windowId, source);
+      if (registered != null) return registered;
+    }
+    _registrationWaiters.remove(windowId);
+    return _registeredRequest(windowId, source);
   }
 
   @override
@@ -466,7 +590,11 @@ class _DesktopUtilityMainBridge with WindowListener {
     int fromWindowId,
     dynamic arguments,
   ) async {
-    final registered = _registeredRequest(fromWindowId, arguments);
+    // Early subscribe can arrive while createWindow is still returning on the
+    // primary. Park that first handshake until the registry entry exists.
+    final registered = eventName == _subscribeMethod
+        ? await _awaitRegisteredRequest(fromWindowId, arguments)
+        : _registeredRequest(fromWindowId, arguments);
     if (registered == null) return null;
     final registeredClientId = _clientIdByWindow[fromWindowId];
     if (registeredClientId == null) return null;
@@ -482,6 +610,10 @@ class _DesktopUtilityMainBridge with WindowListener {
         return const {'ok': true};
       case _subscribeMethod:
         _subscribedWindows.add(fromWindowId);
+        final subscribeWaiter = _subscribeWaiters.remove(fromWindowId);
+        if (subscribeWaiter != null && !subscribeWaiter.isCompleted) {
+          subscribeWaiter.complete();
+        }
         return {'ok': true, 'updates': _bootstrapUpdates(registeredClientId)};
       case _queryMethod:
         final request = arguments is Map
@@ -764,10 +896,21 @@ class _DesktopUtilityMainBridge with WindowListener {
 
   void _handleActiveWindowsChanged() {
     final active = MultiWindowManager.current.activeWindows.value.toSet();
-    for (final windowId in _argumentsByWindow.keys.toList(growable: false)) {
-      if (!active.contains(windowId)) _removeWindow(windowId);
+    for (final windowId in _pendingActivationWindows.toList(growable: false)) {
+      if (active.contains(windowId)) {
+        _pendingActivationWindows.remove(windowId);
+      }
     }
-    _registry.retainActive(active);
+    for (final windowId in _argumentsByWindow.keys.toList(growable: false)) {
+      final pendingActivation = _pendingActivationWindows.contains(windowId);
+      if (!desktopUtilityWindowShouldRetainWhileActivating(
+        isActive: active.contains(windowId),
+        isPendingActivation: pendingActivation,
+      )) {
+        _removeWindow(windowId);
+      }
+    }
+    _registry.retainActive({...active, ..._pendingActivationWindows});
   }
 
   void _removeWindow(int windowId) {
@@ -776,7 +919,16 @@ class _DesktopUtilityMainBridge with WindowListener {
     final lease = _accountLeasesByWindow.remove(windowId);
     if (lease != null) unawaited(lease.release());
     _subscribedWindows.remove(windowId);
+    _pendingActivationWindows.remove(windowId);
     _pendingUpdatesByWindow.remove(windowId);
+    final registrationWaiter = _registrationWaiters.remove(windowId);
+    if (registrationWaiter != null && !registrationWaiter.isCompleted) {
+      registrationWaiter.complete();
+    }
+    final subscribeWaiter = _subscribeWaiters.remove(windowId);
+    if (subscribeWaiter != null && !subscribeWaiter.isCompleted) {
+      subscribeWaiter.complete();
+    }
     _registry.removeWindow(windowId);
   }
 
@@ -800,18 +952,27 @@ class _DesktopUtilityChildProxy with WindowListener {
 
   Future<void> subscribe() async {
     Map? response;
-    for (var attempt = 0; attempt < 30 && response == null; attempt += 1) {
+    final startedAt = DateTime.now();
+    while (response == null &&
+        desktopUtilitySubscribeDeadlineAllowsRetry(
+          startedAt: startedAt,
+          now: DateTime.now(),
+        )) {
       try {
         final value = await MultiWindowManager.current
             .invokeMethodToWindow(0, _subscribeMethod, arguments.toIpcJson())
-            .timeout(const Duration(seconds: 2));
+            .timeout(desktopUtilitySubscribeAttemptTimeout);
         if (value is Map && value['ok'] == true) response = value;
       } on Object {
         // The child engine can start before its primary registry entry is
         // visible. Retry only this bounded local transport handshake.
       }
-      if (response == null && attempt < 29) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (response == null &&
+          desktopUtilitySubscribeDeadlineAllowsRetry(
+            startedAt: startedAt,
+            now: DateTime.now().add(desktopUtilitySubscribeRetryDelay),
+          )) {
+        await Future<void>.delayed(desktopUtilitySubscribeRetryDelay);
       }
     }
     if (response == null) {
@@ -884,6 +1045,8 @@ class _DesktopUtilityChildProxy with WindowListener {
     }
     return null;
   }
+
+  Future<void> disposeFailedHandshake() => _close();
 
   Future<void> _close() async {
     if (_closed) return;

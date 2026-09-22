@@ -42,6 +42,7 @@ import '../moments/moments_view.dart';
 import '../platform/android_share_intent.dart';
 import '../profile/profile_view.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../settings/settings_view.dart';
 import '../settings/topic_group_display_mode.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
@@ -533,19 +534,38 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     int? userId,
     String? initialSettingsCategoryId,
   }) {
+    // Linux utility children miss the primary subscribe handshake and leave a
+    // blank window. Settings stays in the primary window there.
+    if (kind == DesktopUtilityWindowKind.settings &&
+        defaultTargetPlatform == TargetPlatform.linux) {
+      _openInWindowSettings(initialSettingsCategoryId);
+      return;
+    }
     final accounts = context.read<AccountStore>();
+    final arguments = DesktopUtilityWindowArguments(
+      kind: kind,
+      accountSlot: accounts.activeSlot,
+      accountUserId: accounts.activeUserId,
+      chatId: chatId,
+      userId: userId,
+      initialSettingsCategoryId: initialSettingsCategoryId,
+      title: title,
+      localeTag: Localizations.localeOf(context).toLanguageTag(),
+      dark: Theme.of(context).brightness == Brightness.dark,
+    );
+    unawaited(() async {
+      final opened = await DesktopUtilityWindowService.instance.open(arguments);
+      if (opened || !mounted) return;
+      if (kind != DesktopUtilityWindowKind.settings) return;
+      _openInWindowSettings(initialSettingsCategoryId);
+    }());
+  }
+
+  void _openInWindowSettings(String? initialCategoryId) {
     unawaited(
-      DesktopUtilityWindowService.instance.open(
-        DesktopUtilityWindowArguments(
-          kind: kind,
-          accountSlot: accounts.activeSlot,
-          accountUserId: accounts.activeUserId,
-          chatId: chatId,
-          userId: userId,
-          initialSettingsCategoryId: initialSettingsCategoryId,
-          title: title,
-          localeTag: Localizations.localeOf(context).toLanguageTag(),
-          dark: Theme.of(context).brightness == Brightness.dark,
+      Navigator.of(context, rootNavigator: true).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => SettingsView(initialCategoryId: initialCategoryId),
         ),
       ),
     );

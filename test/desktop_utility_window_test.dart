@@ -59,6 +59,58 @@ void main() {
     expect(desktopUtilityWindowHasUsableMetrics(const Size(500, 700)), isTrue);
   });
 
+  test('utility subscribe handshake keeps a bounded Linux-safe deadline', () {
+    final startedAt = DateTime.utc(2026, 9, 22, 12);
+    expect(
+      desktopUtilitySubscribeDeadlineAllowsRetry(
+        startedAt: startedAt,
+        now: startedAt.add(const Duration(seconds: 1)),
+      ),
+      isTrue,
+    );
+    expect(
+      desktopUtilitySubscribeDeadlineAllowsRetry(
+        startedAt: startedAt,
+        now: startedAt.add(desktopUtilitySubscribeDeadline),
+      ),
+      isTrue,
+    );
+    expect(
+      desktopUtilitySubscribeDeadlineAllowsRetry(
+        startedAt: startedAt,
+        now: startedAt.add(
+          desktopUtilitySubscribeDeadline + const Duration(milliseconds: 1),
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilitySubscribeDeadline,
+      greaterThanOrEqualTo(const Duration(seconds: 10)),
+    );
+    expect(
+      desktopUtilityWindowShouldRetainWhileActivating(
+        isActive: false,
+        isPendingActivation: true,
+      ),
+      isTrue,
+    );
+    expect(
+      desktopUtilityWindowShouldRetainWhileActivating(
+        isActive: false,
+        isPendingActivation: false,
+      ),
+      isFalse,
+    );
+    expect(
+      desktopUtilityWindowShouldRetainWhileActivating(
+        isActive: true,
+        isPendingActivation: false,
+      ),
+      isTrue,
+    );
+  });
+
   test('primary-chat IPC carries presentation only and validates input', () {
     final encoded = const ChatDeepLinkRequest(
       chatId: -10042,
@@ -505,13 +557,40 @@ void main() {
       contains('DesktopUtilityWindowArguments.tryParseLaunchArguments'),
     );
     expect(main, contains('configureChildProxy'));
+    expect(
+      main,
+      contains('Desktop utility window aborted: primary transport unavailable'),
+    );
     expect(main, contains('onSettingsChanged: _reloadDesktopSettings'));
     expect(main, contains('accountUserIdForSlot: _accountUserIdForSlot'));
     expect(main, contains('await widget.prefs.reload()'));
     for (final id in ['calls', 'saved-messages', 'files', 'settings']) {
       expect(mainTabs, contains("id: '$id'"));
     }
+    expect(mainTabs, contains('DesktopUtilityWindowKind.settings'));
+    expect(mainTabs, contains('defaultTargetPlatform == TargetPlatform.linux'));
+    expect(mainTabs, contains('_openInWindowSettings'));
+    expect(mainTabs, contains('rootNavigator: true'));
+    expect(mainTabs, contains('MaterialPageRoute<void>'));
+    expect(
+      mainTabs,
+      contains('SettingsView(initialCategoryId: initialCategoryId)'),
+    );
+    final hotkeys = File('lib/app/desktop_hotkey_host.dart').readAsStringSync();
+    expect(hotkeys, contains('defaultTargetPlatform == TargetPlatform.linux'));
+    expect(hotkeys, contains('rootNavigator: true'));
+    expect(hotkeys, contains('MaterialPageRoute<void>'));
+    expect(hotkeys, contains('const SettingsView()'));
+    expect(
+      hotkeys.indexOf('defaultTargetPlatform == TargetPlatform.linux'),
+      lessThan(hotkeys.indexOf('DesktopUtilityWindowService.instance.open')),
+    );
     expect(mainTabs, isNot(contains("id: 'appearance'")));
+    expect(io, contains('desktopUtilitySubscribeDeadline'));
+    expect(io, contains('_pendingActivationWindows'));
+    expect(io, contains('_awaitRegisteredRequest'));
+    expect(io, contains('_waitUntilSubscribed'));
+    expect(io, contains('disposeFailedHandshake'));
   });
 
   test('detached settings synchronize notification and video preferences', () {
