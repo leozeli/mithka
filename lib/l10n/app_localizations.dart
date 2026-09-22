@@ -3337,6 +3337,14 @@ abstract final class AppStringKeys {
   static const chatAddPollOption = 'chatAddPollOption';
   static const chatAdministratorEditTransferOwnership =
       'chatAdministratorEditTransferOwnership';
+  static const chatFolderGroupAddTo = 'chatFolderGroupAddTo';
+  static const chatFolderGroupCreate = 'chatFolderGroupCreate';
+  static const chatFolderGroupCreateWithFolder = 'chatFolderGroupCreateWithFolder';
+  static const chatFolderGroupDelete = 'chatFolderGroupDelete';
+  static const chatFolderGroupDeleteConfirm = 'chatFolderGroupDeleteConfirm';
+  static const chatFolderGroupNameHint = 'chatFolderGroupNameHint';
+  static const chatFolderGroupRemoveFolder = 'chatFolderGroupRemoveFolder';
+  static const chatFolderGroupRename = 'chatFolderGroupRename';
   static const chatFolderManagementAllChats = 'chatFolderManagementAllChats';
   static const chatFolderManagementDeleteThisInviteLink =
       'chatFolderManagementDeleteThisInviteLink';

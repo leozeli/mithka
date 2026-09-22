@@ -4,10 +4,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
+import 'package:mithka/chats/local_folder_group.dart';
 import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/chat_folder_icons.dart';
+import 'package:mithka/l10n/app_localizations.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUpAll(() async {
+    await AppStrings.ensureLoaded(const Locale('en'));
+  });
+
   testWidgets('right click edits only custom folders without selecting them', (
     tester,
   ) async {
@@ -51,6 +59,58 @@ void main() {
     expect(selections, 0);
     await tester.pumpWidget(const SizedBox.shrink());
     debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('group rows toggle expand and nest child folders', (
+    tester,
+  ) async {
+    late StateSetter update;
+    var group = const LocalFolderGroup(
+      id: 'g1',
+      title: 'Focus',
+      childFolderIds: [7],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: const [AppLocalizations.delegate],
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 72,
+            height: 300,
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                update = setState;
+                return ChatFolderRail(
+                  filters: const [
+                    ChatFilterOption(title: 'All'),
+                    ChatFilterOption(title: 'Work', folderId: 7),
+                    ChatFilterOption(title: 'Bots', folderId: 9),
+                  ],
+                  groups: [group],
+                  selectedFolderId: null,
+                  onSelect: (_) {},
+                  onToggleGroup: (value) => update(
+                    () => group = value.copyWith(expanded: !value.expanded),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const ValueKey('side-group-g1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('side-folder-7')), findsOneWidget);
+    expect(find.byKey(const ValueKey('side-folder-9')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('side-group-g1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('side-folder-7')), findsNothing);
+    expect(find.byKey(const ValueKey('side-folder-9')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('side-group-g1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('side-folder-7')), findsOneWidget);
   });
 
   test('folder icons map configured names and safely fall back', () {
