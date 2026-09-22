@@ -971,9 +971,14 @@
     <string name="chatListCreateGroup">グループチャットを作成</string>
     <string name="chatListDeleteChatQuestion">チャットを削除しますか？</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">「{value1}」から退出し、Telegramアカウントの履歴をすべての端末から削除しますか？</string>
+    <string name="chatListLocalPin">端末にピン留め</string>
+    <string name="chatListLocalPinLimit">この端末では最大100件までピン留めできます</string>
+    <string name="chatListLocalPinnedNotice">この端末にピン留めしました</string>
+    <string name="chatListLocalUnpin">端末のピン留めを解除</string>
     <string name="chatListMarkUnread">未読にする</string>
     <string name="chatListNoChats">チャットはまだありません</string>
     <string name="chatListScanQrCode">QRコードをスキャン</string>
+    <string name="chatListScrollToTop">先頭へスクロール</string>
     <string name="chatListUnarchive">アーカイブを解除</string>
     <string name="chatListUnpin">ピン留めを解除</string>
     <string name="chatLoadingTopics">トピックを読み込み中</string>
