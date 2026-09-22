@@ -972,9 +972,14 @@
     <string name="chatListCreateGroup">Créer un groupe</string>
     <string name="chatListDeleteChatQuestion">Supprimer la discussion ?</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">Quitter « {value1} » et supprimer son historique de votre compte Telegram sur tous vos appareils ?</string>
+    <string name="chatListLocalPin">Épingler ici</string>
+    <string name="chatListLocalPinLimit">Cet appareil peut épingler jusqu’à 100 discussions localement</string>
+    <string name="chatListLocalPinnedNotice">Épinglé sur cet appareil</string>
+    <string name="chatListLocalUnpin">Désépingler ici</string>
     <string name="chatListMarkUnread">Marquer comme non lu</string>
     <string name="chatListNoChats">Aucune discussion pour le moment</string>
     <string name="chatListScanQrCode">Scanner un QR code</string>
+    <string name="chatListScrollToTop">Retour en haut</string>
     <string name="chatListUnarchive">Désarchiver</string>
     <string name="chatListUnpin">Désépingler</string>
     <string name="chatLoadingTopics">Chargement des sujets</string>

@@ -38,6 +38,7 @@ class ChatRowView extends StatelessWidget {
     required this.chat,
     this.archived = false,
     this.selected = false,
+    this.locallyPinned = false,
     this.onClearUnread,
     this.avatarBuilder,
     this.titleTrailing,
@@ -46,6 +47,9 @@ class ChatRowView extends StatelessWidget {
   final ChatSummary chat;
   final bool archived;
   final bool selected;
+
+  /// Device-local pin. Drawn as a filled pin, separate from [ChatSummary.isPinned].
+  final bool locallyPinned;
   final VoidCallback? onClearUnread;
   final Widget Function(double size)? avatarBuilder;
   final Widget? titleTrailing;
@@ -67,6 +71,7 @@ class ChatRowView extends StatelessWidget {
               chat.title
         : chat.title;
     final rowHeight = chatListRowExtentFor(context);
+    final showPin = chat.isPinned || locallyPinned;
     final folderTags =
         context.watch<ChatFolderTagController?>()?.tagsFor(chat.folderIds) ??
         const <ChatFolderTag>[];
@@ -90,7 +95,7 @@ class ChatRowView extends StatelessWidget {
       height: rowHeight,
       color: selected
           ? c.listHeaderTint
-          : (chat.isPinned ? c.pinnedRow : c.background),
+          : (showPin ? c.pinnedRow : c.background),
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
       child: Row(
         children: [
@@ -285,6 +290,7 @@ class ChatRowView extends StatelessWidget {
     double timestampFontSize,
   ) {
     final c = context.colors;
+    final showPin = chat.isPinned || locallyPinned;
     final showTrailingIndicator = !isDesktopTargetPlatform();
     return SizedBox(
       height: rowHeight,
@@ -330,15 +336,20 @@ class ChatRowView extends StatelessWidget {
                     ),
                   if ((chat.unreadMentionCount > 0 ||
                           chat.unreadReactionCount > 0) &&
-                      (chat.isPinned || chat.isMuted))
+                      (showPin || chat.isMuted))
                     const SizedBox(width: AppSpacing.xs),
-                  if (chat.isPinned)
+                  if (showPin)
                     AppPinIcon(
-                      key: const ValueKey('chat-row-pinned'),
+                      key: ValueKey(
+                        locallyPinned && !chat.isPinned
+                            ? 'chat-row-local-pinned'
+                            : 'chat-row-pinned',
+                      ),
                       size: AppIconSize.sm,
                       color: c.textTertiary,
+                      filled: locallyPinned,
                     ),
-                  if (chat.isPinned && chat.isMuted)
+                  if (showPin && chat.isMuted)
                     const SizedBox(width: AppSpacing.xs),
                   if (chat.isMuted)
                     AppIcon(
@@ -347,7 +358,7 @@ class ChatRowView extends StatelessWidget {
                       size: AppIconSize.sm,
                       color: c.textTertiary,
                     ),
-                  if ((chat.isPinned || chat.isMuted) &&
+                  if ((showPin || chat.isMuted) &&
                       showTrailingIndicator &&
                       trailingIndicator != null)
                     const SizedBox(width: AppSpacing.xs),

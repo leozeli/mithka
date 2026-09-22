@@ -971,9 +971,14 @@
     <string name="chatListCreateGroup">建立群組</string>
     <string name="chatListDeleteChatQuestion">刪除聊天？</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">離開「{value1}」並在所有裝置上刪除你的 Telegram 帳戶中的聊天記錄？</string>
+    <string name="chatListLocalPin">本機置頂</string>
+    <string name="chatListLocalPinLimit">本機最多可本地置頂 100 個聊天</string>
+    <string name="chatListLocalPinnedNotice">已在本機置頂</string>
+    <string name="chatListLocalUnpin">取消本機置頂</string>
     <string name="chatListMarkUnread">標示為未讀</string>
     <string name="chatListNoChats">尚未有聊天</string>
     <string name="chatListScanQrCode">掃描 QR Code</string>
+    <string name="chatListScrollToTop">回到頂部</string>
     <string name="chatListUnarchive">取消封存</string>
     <string name="chatListUnpin">取消置頂</string>
     <string name="chatLoadingTopics">正在載入話題</string>

@@ -2,9 +2,11 @@
 //  chat_list_view_model.dart
 //
 //  Drives the 消息 (chat list) screen. Loads the main chat list from TDLib, then
-//  keeps it live by folding in the incremental `update*` events. Ordering:
-//  pinned chats float to the top, then the rest sort by TDLib `order` desc, with
-//  last-message date as the tiebreaker. Port of the Swift `ChatListViewModel`.
+//  keeps it live by folding in the incremental `update*` events. Ordering on the
+//  main list: local pins (this device only) first, then Telegram-pinned chats,
+//  then the rest by TDLib `order` desc, with last-message date as the
+//  tiebreaker. Local pins never call `toggleChatIsPinned`. Port of the Swift
+//  `ChatListViewModel`.
 //
 
 import 'dart:async';
@@ -25,6 +27,7 @@ import '../tdlib/td_models.dart';
 import '../tdlib/td_user_index.dart';
 import 'chat_delete_policy.dart';
 import 'chat_removal_actions.dart';
+import 'local_chat_pin_store.dart';
 
 class ChatFilterOption {
   const ChatFilterOption({
@@ -61,7 +64,8 @@ class ChatListViewModel extends ChangeNotifier {
   ChatListViewModel({
     @visibleForTesting this._queryForTesting,
     @visibleForTesting this._membershipForTesting,
-  });
+    @visibleForTesting LocalChatPinStore? localPins,
+  }) : _localPins = localPins ?? LocalChatPinStore();
 
   List<ChatSummary> _chats = [];
   List<ChatSummary> _archived = [];
@@ -190,6 +194,9 @@ class ChatListViewModel extends ChangeNotifier {
   int _communityLookupsInFlight = 0;
 
   final TdClient _client = TdClient.shared;
+  final LocalChatPinStore _localPins;
+  int? _accountUserId;
+  int _localPinBindGeneration = 0;
   StreamSubscription? _sub;
   bool _listening = false;
   bool _disposed = false;
@@ -217,7 +224,16 @@ class ChatListViewModel extends ChangeNotifier {
     _loadFilters();
     _loadChats(_initialPageSize);
     _deferWarmCaches();
+    unawaited(_bindLocalPins());
   }
+
+  /// Records the signed-in user before [onAppear] so local pins can load with
+  /// the account instead of waiting on `getMe`.
+  void prepareLocalPinAccount(int? userId) {
+    if (userId != null) _accountUserId = userId;
+  }
+
+  bool isLocallyPinned(int chatId) => _localPins.isPinned(chatId);
 
   CommunitySummary? community(int communityId) => _communities[communityId];
 
@@ -276,11 +292,23 @@ class ChatListViewModel extends ChangeNotifier {
     if (_disposed) return;
     if (_meId == value) return;
     _meId = value;
+    if (value != null) _accountUserId = value;
+    unawaited(_bindLocalPins());
     if (value == null) return;
     for (final s in _map.values) {
       s.isSavedMessages = s.peerUserId == value;
     }
     _resort();
+  }
+
+  Future<void> _bindLocalPins() async {
+    final generation = ++_localPinBindGeneration;
+    final changed = await _localPins.bind(
+      slot: _client.activeSlot,
+      userId: _accountUserId ?? _meId,
+    );
+    if (_disposed || generation != _localPinBindGeneration) return;
+    if (changed) _resort();
   }
 
   @override
@@ -599,30 +627,50 @@ class ChatListViewModel extends ChangeNotifier {
     _mutate(id, (s) => s.isPinned = newValue);
     _resort();
 
-    _client
-        .query({
-          '@type': 'toggleChatIsPinned',
-          // Pin in the list the user is looking at — pinning from a folder
-          // filter used to silently mutate the Main list instead.
-          'chat_list': _activeChatList,
-          'chat_id': id,
-          'is_pinned': newValue,
-        })
-        .catchError((Object error) async {
-          // Failure: revert and restore the chat's true position from TDLib.
-          _mutate(id, (s) => s.isPinned = !newValue);
-          try {
-            final raw = await _client.query({
-              '@type': 'getChat',
-              'chat_id': id,
-            });
-            final fresh = TDParse.chat(raw);
-            if (fresh != null) _map[id] = fresh;
-          } catch (_) {}
-          notice = _pinErrorNotice(error);
-          _resort();
-          return <String, dynamic>{};
-        });
+    _chatListQuery({
+      '@type': 'toggleChatIsPinned',
+      // Pin in the list the user is looking at — pinning from a folder
+      // filter used to silently mutate the Main list instead.
+      'chat_list': _activeChatList,
+      'chat_id': id,
+      'is_pinned': newValue,
+    }).catchError((Object error) async {
+      // Failure: revert and restore the chat's true position from TDLib.
+      _mutate(id, (s) => s.isPinned = !newValue);
+      try {
+        final raw = await _chatListQuery({'@type': 'getChat', 'chat_id': id});
+        final fresh = TDParse.chat(raw);
+        if (fresh != null) _map[id] = fresh;
+      } catch (_) {}
+      if (_disposed) return <String, dynamic>{};
+      if (newValue && _isPinLimitError(error)) {
+        // The server quota is full. Keep the chat pinned on this device
+        // instead of surfacing Telegram's pin-limit error.
+        final locallyPinned = await _localPins.pin(id);
+        if (_disposed) return <String, dynamic>{};
+        notice = locallyPinned
+            ? AppStringKeys.chatListLocalPinnedNotice
+            : AppStringKeys.chatListLocalPinLimit;
+      } else {
+        notice = _pinErrorNotice(error);
+      }
+      _resort();
+      return <String, dynamic>{};
+    });
+  }
+
+  /// Pins or unpins [chat] on this device only. Does not call TDLib.
+  Future<void> toggleLocalPin(ChatSummary chat) async {
+    final id = chat.id;
+    if (_localPins.isPinned(id)) {
+      await _localPins.unpin(id);
+    } else {
+      final pinned = await _localPins.pin(id);
+      if (_disposed) return;
+      if (!pinned) notice = AppStringKeys.chatListLocalPinLimit;
+    }
+    if (_disposed) return;
+    _resort();
   }
 
   void markUnread(ChatSummary chat) {
@@ -1500,7 +1548,9 @@ class ChatListViewModel extends ChangeNotifier {
 
   List<ChatSummary> _projectChats(int? folderId, List<ChatSummary> visible) {
     if (folderId == null) {
-      return visible.where((c) => c.order > 0).toList()..sort(_compare);
+      return visible.where((c) => c.order > 0).toList()..sort(
+        (a, b) => compareMainChatList(a, b, localPinRank: _localPins.rankOf),
+      );
     }
     final folderOrders = _folderOrders[folderId] ?? const {};
     return visible.where((c) => (folderOrders[c.id] ?? 0) > 0).toList()
@@ -1527,6 +1577,9 @@ class ChatListViewModel extends ChangeNotifier {
 
   @visibleForTesting
   void scheduleResortForTesting() => _scheduleResort();
+
+  @visibleForTesting
+  void resortForTesting() => _resort();
 
   @visibleForTesting
   void seedChatForTesting(ChatSummary chat) {
@@ -1578,12 +1631,8 @@ class ChatListViewModel extends ChangeNotifier {
     candidate.unreadCount = existing.unreadCount;
   }
 
-  static int _compare(ChatSummary a, ChatSummary b) {
-    if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-    if (a.order != b.order) return b.order.compareTo(a.order);
-    if (a.date != b.date) return b.date.compareTo(a.date);
-    return b.id.compareTo(a.id);
-  }
+  static int _compare(ChatSummary a, ChatSummary b) =>
+      compareServerChatList(a, b);
 
   // MARK: - Chat-list peer display metadata (private chats)
 
@@ -1763,10 +1812,9 @@ class ChatListViewModel extends ChangeNotifier {
         });
   }
 
-  String _pinErrorNotice(Object error) {
+  bool _isPinLimitError(Object error) {
     final message = error is TdError ? error.message : error.toString();
-    final text = message.trim();
-    final normalized = text.toLowerCase().replaceAll('_', ' ');
+    final normalized = message.trim().toLowerCase().replaceAll('_', ' ');
     final hitPinned =
         normalized.contains('pin') ||
         normalized.contains('pinned') ||
@@ -1778,9 +1826,15 @@ class ChatListViewModel extends ChangeNotifier {
         normalized.contains('many') ||
         normalized.contains('much') ||
         normalized.contains(AppStringKeys.chatInfoPinLimit);
-    if (hitPinned && hitLimit) {
+    return hitPinned && hitLimit;
+  }
+
+  String _pinErrorNotice(Object error) {
+    if (_isPinLimitError(error)) {
       return AppStringKeys.chatInfoPinLimitReachedError;
     }
+    final message = error is TdError ? error.message : error.toString();
+    final text = message.trim();
     return text.isEmpty
         ? AppStringKeys.chatInfoPinFailed
         : AppStrings.t(AppStringKeys.chatInfoPinFailedWithReason, {

@@ -971,9 +971,14 @@
     <string name="chatListCreateGroup">그룹 채팅 만들기</string>
     <string name="chatListDeleteChatQuestion">채팅을 삭제할까요?</string>
     <string name="chatListLeaveAndDeleteGroupConfirmation">“{value1}”에서 나가고 Telegram 계정의 기록을 모든 기기에서 삭제할까요?</string>
+    <string name="chatListLocalPin">이 기기에 고정</string>
+    <string name="chatListLocalPinLimit">이 기기에서는 최대 100개까지 고정할 수 있습니다</string>
+    <string name="chatListLocalPinnedNotice">이 기기에 고정했습니다</string>
+    <string name="chatListLocalUnpin">이 기기 고정 해제</string>
     <string name="chatListMarkUnread">읽지 않음으로 표시</string>
     <string name="chatListNoChats">아직 채팅이 없습니다</string>
     <string name="chatListScanQrCode">QR 코드 스캔</string>
+    <string name="chatListScrollToTop">맨 위로 이동</string>
     <string name="chatListUnarchive">보관 해제</string>
     <string name="chatListUnpin">고정 해제</string>
     <string name="chatLoadingTopics">주제 불러오는 중</string>
