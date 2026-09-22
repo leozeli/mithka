@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../auth/account_store.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/desktop_hotkey_controller.dart';
+import '../settings/settings_view.dart';
 import 'desktop_utility_window.dart';
 
 /// Replaceable boundary around the native system-wide hotkey plugin.
@@ -255,8 +256,14 @@ class _DesktopPrimaryHotkeyBindingsState
 
   Future<void> _openSettings() async {
     if (!mounted) return;
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      await Navigator.of(context, rootNavigator: true).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const SettingsView()),
+      );
+      return;
+    }
     final accounts = context.read<AccountStore>();
-    await DesktopUtilityWindowService.instance.open(
+    final opened = await DesktopUtilityWindowService.instance.open(
       DesktopUtilityWindowArguments(
         kind: DesktopUtilityWindowKind.settings,
         accountSlot: accounts.activeSlot,
@@ -266,6 +273,11 @@ class _DesktopPrimaryHotkeyBindingsState
         dark: Theme.of(context).brightness == Brightness.dark,
       ),
     );
+    if (opened || !mounted) return;
+    await Navigator.of(
+      context,
+      rootNavigator: true,
+    ).push<void>(MaterialPageRoute<void>(builder: (_) => const SettingsView()));
   }
 
   @override
