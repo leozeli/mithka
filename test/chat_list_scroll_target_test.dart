@@ -43,4 +43,27 @@ void main() {
     expect(chatListPullDownArchiveItemIndex(showSearch: true), 1);
     expect(chatListPullDownArchiveItemIndex(showSearch: false), 0);
   });
+
+  test('scroll-to-top control stays hidden near the top', () {
+    expect(chatListShouldShowScrollToTop(scrollPixels: 0), isFalse);
+    expect(
+      chatListShouldShowScrollToTop(scrollPixels: chatListScrollToTopThreshold),
+      isFalse,
+    );
+    expect(chatListShouldShowScrollToTop(scrollPixels: -36), isFalse);
+    expect(
+      chatListShouldShowScrollToTop(scrollPixels: -40, minScrollExtent: -40),
+      isFalse,
+    );
+  });
+
+  test('scroll-to-top control appears once the list passes the threshold', () {
+    expect(
+      chatListShouldShowScrollToTop(
+        scrollPixels: chatListScrollToTopThreshold + 0.5,
+      ),
+      isTrue,
+    );
+    expect(chatListShouldShowScrollToTop(scrollPixels: 240), isTrue);
+  });
 }
