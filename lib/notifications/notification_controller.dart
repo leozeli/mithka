@@ -161,35 +161,45 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
     _state =
         WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
 
-    await _plugin.initialize(
-      settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
-          defaultPresentBanner: false,
-          defaultPresentList: false,
-          defaultPresentSound: false,
-          defaultPresentBadge: false,
+    try {
+      await _plugin.initialize(
+        settings: const InitializationSettings(
+          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          iOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+            defaultPresentBanner: false,
+            defaultPresentList: false,
+            defaultPresentSound: false,
+            defaultPresentBadge: false,
+          ),
+          macOS: DarwinInitializationSettings(
+            requestAlertPermission: false,
+            requestBadgePermission: false,
+            requestSoundPermission: false,
+            defaultPresentBanner: false,
+            defaultPresentList: false,
+            defaultPresentSound: false,
+            defaultPresentBadge: false,
+          ),
+          linux: LinuxInitializationSettings(
+            defaultActionName: 'Open notification',
+          ),
+          windows: WindowsInitializationSettings(
+            appName: 'Mithka',
+            appUserModelId: 'Iebb.Mithka.Desktop',
+            guid: '19a46b98-1781-4d9e-92ed-bd0576e48e2d',
+          ),
         ),
-        macOS: DarwinInitializationSettings(
-          requestAlertPermission: false,
-          requestBadgePermission: false,
-          requestSoundPermission: false,
-          defaultPresentBanner: false,
-          defaultPresentList: false,
-          defaultPresentSound: false,
-          defaultPresentBadge: false,
-        ),
-        windows: WindowsInitializationSettings(
-          appName: 'Mithka',
-          appUserModelId: 'Iebb.Mithka.Desktop',
-          guid: '19a46b98-1781-4d9e-92ed-bd0576e48e2d',
-        ),
-      ),
-      onDidReceiveNotificationResponse: _openNotification,
-    );
+        onDidReceiveNotificationResponse: _openNotification,
+      );
+    } catch (error) {
+      // A missing platform setting must not take down startup. In-app banners
+      // still work when the system plugin cannot initialize.
+      _notificationsAvailable = false;
+      debugPrint('Local notification initialization failed: $error');
+    }
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
       _notificationTapChannel.setMethodCallHandler(_handleNativeTap);
@@ -202,11 +212,19 @@ class NotificationController with WidgetsBindingObserver, ChangeNotifier {
       }
     }
 
-    final launch = await _plugin.getNotificationAppLaunchDetails();
-    if (launch?.didNotificationLaunchApp ?? false) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openNotification(launch?.notificationResponse);
-      });
+    // Linux leaves getNotificationAppLaunchDetails unimplemented and throws.
+    // Skip that lookup, and log the failure if another platform does the same.
+    if (defaultTargetPlatform != TargetPlatform.linux) {
+      try {
+        final launch = await _plugin.getNotificationAppLaunchDetails();
+        if (launch?.didNotificationLaunchApp ?? false) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _openNotification(launch?.notificationResponse);
+          });
+        }
+      } catch (error) {
+        debugPrint('Notification launch details lookup failed: $error');
+      }
     }
 
     await _plugin

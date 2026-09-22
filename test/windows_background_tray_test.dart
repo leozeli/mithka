@@ -100,4 +100,24 @@ void main() {
       contains("guid: '19a46b98-1781-4d9e-92ed-bd0576e48e2d'"),
     );
   });
+
+  test(
+    'Linux notification startup supplies settings and skips launch details',
+    () {
+      final notifications = _read(
+        'lib/notifications/notification_controller.dart',
+      );
+
+      expect(notifications, contains('linux: LinuxInitializationSettings('));
+      expect(notifications, contains("defaultActionName: 'Open notification'"));
+      final linuxGuard = notifications.indexOf(
+        'defaultTargetPlatform != TargetPlatform.linux',
+      );
+      final launchLookup = notifications.indexOf(
+        'getNotificationAppLaunchDetails()',
+      );
+      expect(linuxGuard, greaterThanOrEqualTo(0));
+      expect(launchLookup, greaterThan(linuxGuard));
+    },
+  );
 }
