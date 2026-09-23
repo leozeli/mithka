@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">이 채팅에서는 메시지를 보낼 수 없습니다</string>
     <string name="chatConnectedBusinessBot">연결된 비즈니스 봇</string>
     <string name="chatContactCallsOnly">연락처와의 통화만 지원됩니다</string>
+    <string name="chatCopyImageFailed">이미지를 복사할 수 없습니다.</string>
+    <string name="chatCopyImageNotReady">이미지가 아직 다운로드되지 않았습니다.</string>
+    <string name="chatCopyingImage">이미지를 복사하는 중…</string>
     <string name="chatDelete">삭제</string>
     <string name="chatDeleteActionsDone">완료되었습니다</string>
     <string name="chatDeleteActionsFailed">작업을 적용할 수 없음: {value1}</string>
@@ -1850,6 +1853,7 @@
     <string name="messageActionBlock">차단</string>
     <string name="messageActionBlockKeyword">키워드 차단</string>
     <string name="messageActionCopy">복사</string>
+    <string name="messageActionCopyImage">이미지 복사</string>
     <string name="messageActionDisplayOriginal">원문 표시</string>
     <string name="messageActionDisplayTranslation">번역 표시</string>
     <string name="messageActionEdit">수정</string>

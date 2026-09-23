@@ -38,6 +38,26 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: imageURL), png)
 
     pasteboard.clearContents()
+    XCTAssertTrue(
+      DesktopClipboardImagesPlugin.writeImage(
+        data: png,
+        mimeType: "image/png",
+        pasteboard: pasteboard
+      )
+    )
+    let written = DesktopClipboardImagesPlugin.readImages(from: pasteboard)
+    XCTAssertEqual(written.count, 1)
+    XCTAssertEqual(written.first?["mimeType"] as? String, "image/png")
+    XCTAssertEqual((written.first?["data"] as? FlutterStandardTypedData)?.data, png)
+    XCTAssertFalse(
+      DesktopClipboardImagesPlugin.writeImage(
+        data: Data(),
+        mimeType: "image/png",
+        pasteboard: pasteboard
+      )
+    )
+
+    pasteboard.clearContents()
     pasteboard.writeObjects([imageURL as NSURL])
     let fileImages = DesktopClipboardImagesPlugin.readImages(from: pasteboard)
     XCTAssertEqual(fileImages.count, 1)

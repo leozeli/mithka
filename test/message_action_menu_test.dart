@@ -814,4 +814,94 @@ void main() {
     );
     expect(find.byKey(const ValueKey('message-action-saveAs')), findsNothing);
   });
+
+  testWidgets('photo messages can copy the image without replacing text copy', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final translation = TranslationController(
+      await SharedPreferences.getInstance(),
+    );
+    addTearDown(translation.dispose);
+    await AppStrings.ensureLoaded(const Locale('en'));
+    AppStrings.setLocale(const Locale('en'));
+    MessageAction? selected;
+
+    Future<void> pumpMenu({
+      required TargetPlatform platform,
+      required String contentType,
+      required String text,
+      TdFileRef? image,
+    }) async {
+      await tester.pumpWidget(
+        ChangeNotifierProvider.value(
+          value: translation,
+          child: MaterialApp(
+            theme: ThemeData(platform: platform),
+            locale: const Locale('en'),
+            localizationsDelegates: const [AppLocalizations.delegate],
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MessageActionMenu(
+                message: ChatMessage(
+                  id: 9,
+                  isOutgoing: false,
+                  text: text,
+                  date: 1,
+                  contentType: contentType,
+                  image: image,
+                ),
+                isPinned: false,
+                onSelect: (action) => selected = action,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final copy = find.byKey(const ValueKey('message-action-copy'));
+    final copyImage = find.byKey(const ValueKey('message-action-copyImage'));
+    final placeholder = AppStrings.t(AppStringKeys.composerImagePreview);
+
+    await pumpMenu(
+      platform: TargetPlatform.linux,
+      contentType: 'messagePhoto',
+      text: placeholder,
+      image: TdFileRef(id: 3),
+    );
+    expect(copy, findsNothing);
+    expect(copyImage, findsOneWidget);
+    expect(find.text('Copy image'), findsOneWidget);
+    await tester.tap(copyImage);
+    expect(selected, MessageAction.copyImage);
+
+    await pumpMenu(
+      platform: TargetPlatform.linux,
+      contentType: 'messagePhoto',
+      text: 'sunset on the river',
+      image: TdFileRef(id: 4),
+    );
+    expect(copy, findsOneWidget);
+    expect(copyImage, findsOneWidget);
+    expect(find.text('Copy'), findsOneWidget);
+
+    await pumpMenu(
+      platform: TargetPlatform.linux,
+      contentType: 'messageVideo',
+      text: 'clip',
+      image: TdFileRef(id: 5),
+    );
+    expect(copy, findsOneWidget);
+    expect(copyImage, findsNothing);
+
+    await pumpMenu(
+      platform: TargetPlatform.android,
+      contentType: 'messagePhoto',
+      text: placeholder,
+      image: TdFileRef(id: 6),
+    );
+    expect(copyImage, findsNothing);
+  });
 }
