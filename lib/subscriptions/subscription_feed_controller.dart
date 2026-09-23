@@ -53,6 +53,12 @@ class SubscriptionFeedController extends ChangeNotifier {
 
   List<FeedSubscription> get subscriptions => _store.subscriptions;
 
+  List<SubscriptionGroup> get groups => _store.groups;
+
+  List<SubscriptionOutlineRow> get outline => _store.outline();
+
+  String? groupOf(String sourceId) => _store.groupOf(sourceId);
+
   FeedSubscription? get selected {
     final id = _selectedId;
     if (id == null) return null;
@@ -216,6 +222,32 @@ class SubscriptionFeedController extends ChangeNotifier {
   Future<void> unsubscribe(String id) async {
     await _store.remove(id);
     if (_selectedId == id) _selectedId = null;
+    _notify();
+  }
+
+  Future<bool> createGroup(String title) async {
+    final id = await _store.createGroup(title);
+    _notify();
+    return id != null;
+  }
+
+  Future<void> renameGroup(String id, String title) async {
+    await _store.renameGroup(id, title);
+    _notify();
+  }
+
+  Future<void> deleteGroup(String id) async {
+    await _store.deleteGroup(id);
+    _notify();
+  }
+
+  Future<void> setGroupExpanded(String id, bool expanded) async {
+    await _store.setGroupExpanded(id, expanded);
+    _notify();
+  }
+
+  Future<void> moveSourceToGroup(String sourceId, String? groupId) async {
+    await _store.moveSourceToGroup(sourceId, groupId);
     _notify();
   }
 

@@ -131,6 +131,78 @@ void main() {
     expect(store.subscriptions, isEmpty);
   });
 
+  test('groups sources locally and prunes removed ones', () async {
+    final store = SubscriptionStore(preferences: prefs);
+    await store.bind(slot: 0, userId: 8);
+    await store.addSubscription(sample('rss:https://example.com/feed'));
+    await store.addSubscription(sample('rss:https://example.com/other'));
+    final groupId = await store.createGroup('  News  ');
+    expect(groupId, isNotNull);
+    await store.moveSourceToGroup('rss:https://example.com/feed', groupId);
+    await store.moveSourceToGroup('rss:https://example.com/other', groupId);
+    await store.moveSourceToGroup('rss:https://example.com/feed', groupId);
+
+    final outline = store.outline();
+    expect(outline.first.group?.title, 'News');
+    expect(outline.first.group?.expanded, isTrue);
+    expect(outline.where((row) => row.nested).map((row) => row.source!.id), [
+      'rss:https://example.com/other',
+      'rss:https://example.com/feed',
+    ]);
+    expect(store.groupOf('rss:https://example.com/feed'), groupId);
+
+    final second = await store.createGroup('Later');
+    await store.moveSourceToGroup('rss:https://example.com/feed', second);
+    expect(store.groupOf('rss:https://example.com/feed'), second);
+    expect(
+      store.groups.first.sourceIds,
+      isNot(contains('rss:https://example.com/feed')),
+    );
+
+    await store.setGroupExpanded(groupId!, false);
+    expect(store.groups.first.expanded, isFalse);
+    expect(
+      store.outline().where((row) => row.nested).map((row) => row.source!.id),
+      ['rss:https://example.com/feed'],
+    );
+
+    await store.remove('rss:https://example.com/other');
+    expect(store.groups.first.sourceIds, isEmpty);
+
+    final again = SubscriptionStore(preferences: prefs);
+    await again.bind(slot: 0, userId: 8);
+    expect(again.groups, hasLength(2));
+    expect(again.groups.first.title, 'News');
+    expect(again.groups.first.expanded, isFalse);
+    expect(again.groups.first.sourceIds, isEmpty);
+    expect(again.groupOf('rss:https://example.com/feed'), second);
+
+    await again.deleteGroup(groupId);
+    expect(again.groups, hasLength(1));
+    expect(again.groupOf('rss:https://example.com/feed'), second);
+    await again.moveSourceToGroup('rss:https://example.com/feed', null);
+    expect(again.groupOf('rss:https://example.com/feed'), isNull);
+    expect(
+      again.outline().where((row) => row.source != null).single.source?.id,
+      'rss:https://example.com/feed',
+    );
+    expect(again.outline().where((row) => row.nested), isEmpty);
+  });
+
+  test('drops orphaned group members when storage is reopened', () async {
+    await prefs.setString(
+      SubscriptionStore.storageKeyForUser(11),
+      '{"v":1,"subscriptions":[{"id":"rss:https://example.com/feed","kind":"rss","title":"Example","addedAt":1,"feedUrl":"https://example.com/feed"}],"groups":[{"id":"grp:1","title":"News","expanded":true,"sourceIds":["rss:https://example.com/feed","rss:missing","rss:https://example.com/feed"]}]}',
+    );
+    final store = SubscriptionStore(preferences: prefs);
+    await store.bind(slot: 0, userId: 11);
+    expect(store.groups.single.sourceIds, ['rss:https://example.com/feed']);
+
+    final again = SubscriptionStore(preferences: prefs);
+    await again.bind(slot: 0, userId: 11);
+    expect(again.groups.single.sourceIds, ['rss:https://example.com/feed']);
+  });
+
   test('refuses a duplicate subscription', () async {
     final store = SubscriptionStore(preferences: prefs, persist: false);
     await store.bind(slot: 0, userId: 1);

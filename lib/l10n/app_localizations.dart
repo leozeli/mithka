@@ -2716,15 +2716,28 @@ abstract final class AppStringKeys {
   static const storyWhoCanView = 'storyWhoCanView';
   static const storyUnsupported = 'storyUnsupported';
   static const subscriptionsAdd = 'subscriptionsAdd';
+  static const subscriptionsAddGroup = 'subscriptionsAddGroup';
   static const subscriptionsAddRss = 'subscriptionsAddRss';
+  static const subscriptionsAddSources = 'subscriptionsAddSources';
   static const subscriptionsAddTelegram = 'subscriptionsAddTelegram';
   static const subscriptionsAll = 'subscriptionsAll';
   static const subscriptionsAlreadyAdded = 'subscriptionsAlreadyAdded';
+  static const subscriptionsDeleteGroup = 'subscriptionsDeleteGroup';
+  static const subscriptionsDeleteGroupMessage =
+      'subscriptionsDeleteGroupMessage';
   static const subscriptionsEmpty = 'subscriptionsEmpty';
+  static const subscriptionsGroupEmpty = 'subscriptionsGroupEmpty';
+  static const subscriptionsGroupName = 'subscriptionsGroupName';
+  static const subscriptionsManage = 'subscriptionsManage';
   static const subscriptionsMarkAllRead = 'subscriptionsMarkAllRead';
+  static const subscriptionsMoveToGroup = 'subscriptionsMoveToGroup';
   static const subscriptionsNoChannels = 'subscriptionsNoChannels';
+  static const subscriptionsNoGroups = 'subscriptionsNoGroups';
+  static const subscriptionsNoSourcesToAdd = 'subscriptionsNoSourcesToAdd';
   static const subscriptionsOpenOriginal = 'subscriptionsOpenOriginal';
   static const subscriptionsRefresh = 'subscriptionsRefresh';
+  static const subscriptionsRemoveFromGroup = 'subscriptionsRemoveFromGroup';
+  static const subscriptionsRenameGroup = 'subscriptionsRenameGroup';
   static const subscriptionsRssInvalidUrl = 'subscriptionsRssInvalidUrl';
   static const subscriptionsRssNetworkError = 'subscriptionsRssNetworkError';
   static const subscriptionsRssNotFeed = 'subscriptionsRssNotFeed';
@@ -2735,6 +2748,8 @@ abstract final class AppStringKeys {
   static const subscriptionsTelegramFailed = 'subscriptionsTelegramFailed';
   static const subscriptionsTimelineEmpty = 'subscriptionsTimelineEmpty';
   static const subscriptionsTooMany = 'subscriptionsTooMany';
+  static const subscriptionsTooManyGroups = 'subscriptionsTooManyGroups';
+  static const subscriptionsUngrouped = 'subscriptionsUngrouped';
   static const subscriptionsUnsubscribe = 'subscriptionsUnsubscribe';
   static const subscriptionsUnsubscribeMessage =
       'subscriptionsUnsubscribeMessage';

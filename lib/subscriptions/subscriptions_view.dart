@@ -124,45 +124,231 @@ class _SubscriptionsSourcePaneState extends State<SubscriptionsSourcePane>
               ),
             ],
           ),
-          Expanded(
-            child: subscriptions.isEmpty
-                ? const _EmptyMessage(
-                    icon: HeroAppIcons.towerBroadcast,
-                    message: AppStringKeys.subscriptionsEmpty,
-                  )
-                : ListView(
-                    padding: EdgeInsets.only(
-                      bottom: BottomBarInset.of(context),
-                    ),
-                    children: [
-                      _SourceRow(
-                        icon: HeroAppIcons.inbox,
-                        title: AppStringKeys.subscriptionsAll.l10n(context),
-                        selected: widget.controller.selectedId == null,
-                        unread: widget.controller.unreadCount(null),
-                        onTap: () => _choose(null),
-                      ),
-                      for (final subscription in subscriptions)
-                        _SourceRow(
-                          icon: subscription.kind == FeedSourceKind.telegram
-                              ? HeroAppIcons.towerBroadcast
-                              : HeroAppIcons.globe,
-                          title: subscription.title,
-                          subtitle: _errorText(context, subscription.lastError),
-                          selected:
-                              widget.controller.selectedId == subscription.id,
-                          unread: widget.controller.unreadCount(
-                            subscription.id,
-                          ),
-                          onTap: () => _choose(subscription.id),
-                          onRemove: () => unawaited(_unsubscribe(subscription)),
-                        ),
-                    ],
-                  ),
-          ),
+          Expanded(child: _sourceList(context, subscriptions)),
         ],
       ),
     );
+  }
+
+  Widget _sourceList(
+    BuildContext context,
+    List<FeedSubscription> subscriptions,
+  ) {
+    final controller = widget.controller;
+    if (subscriptions.isEmpty && controller.groups.isEmpty) {
+      return const _EmptyMessage(
+        icon: HeroAppIcons.towerBroadcast,
+        message: AppStringKeys.subscriptionsEmpty,
+      );
+    }
+    final outline = controller.outline;
+    final children = <Widget>[
+      _SourceRow(
+        icon: HeroAppIcons.inbox,
+        title: AppStringKeys.subscriptionsAll.l10n(context),
+        selected: controller.selectedId == null,
+        unread: controller.unreadCount(null),
+        onTap: () => _choose(null),
+      ),
+    ];
+    for (var index = 0; index < outline.length; index++) {
+      final row = outline[index];
+      final group = row.group;
+      if (group != null) {
+        final nextIsChild =
+            index + 1 < outline.length && outline[index + 1].nested;
+        children.add(
+          _GroupRow(
+            title: group.title,
+            expanded: group.expanded,
+            unread: _groupUnread(group),
+            onTap: () => unawaited(
+              controller.setGroupExpanded(group.id, !group.expanded),
+            ),
+            onMenu: () => unawaited(_groupMenu(group)),
+          ),
+        );
+        if (group.expanded && !nextIsChild) {
+          children.add(
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(56, 0, 16, 12),
+              child: Text(
+                AppStringKeys.subscriptionsGroupEmpty.l10n(context),
+                style: AppTextStyle.caption(context.colors.textTertiary),
+              ),
+            ),
+          );
+        }
+        continue;
+      }
+      final subscription = row.source!;
+      children.add(
+        _SourceRow(
+          icon: subscription.kind == FeedSourceKind.telegram
+              ? HeroAppIcons.towerBroadcast
+              : HeroAppIcons.globe,
+          title: subscription.title,
+          subtitle: _errorText(context, subscription.lastError),
+          selected: controller.selectedId == subscription.id,
+          unread: controller.unreadCount(subscription.id),
+          indent: row.nested ? 28 : 0,
+          onTap: () => _choose(subscription.id),
+          onMenu: () => unawaited(_sourceMenu(subscription)),
+          onRemove: () => unawaited(_unsubscribe(subscription)),
+        ),
+      );
+    }
+    return ListView(
+      padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
+      children: children,
+    );
+  }
+
+  int _groupUnread(SubscriptionGroup group) {
+    var count = 0;
+    for (final id in group.sourceIds) {
+      count += widget.controller.unreadCount(id);
+    }
+    return count;
+  }
+
+  Future<void> _sourceMenu(FeedSubscription subscription) async {
+    final grouped = widget.controller.groupOf(subscription.id) != null;
+    final choice = await _showChoices(context, subscription.title, [
+      const _Choice(
+        'move',
+        HeroAppIcons.folder,
+        AppStringKeys.subscriptionsMoveToGroup,
+      ),
+      if (grouped)
+        const _Choice(
+          'ungroup',
+          HeroAppIcons.xmark,
+          AppStringKeys.subscriptionsRemoveFromGroup,
+        ),
+    ]);
+    if (!mounted || choice == null) return;
+    if (choice == 'ungroup') {
+      await widget.controller.moveSourceToGroup(subscription.id, null);
+      return;
+    }
+    await _moveSource(subscription);
+  }
+
+  Future<void> _moveSource(FeedSubscription subscription) async {
+    final groups = widget.controller.groups;
+    if (groups.isEmpty) {
+      showToast(context, AppStringKeys.subscriptionsNoGroups);
+      return;
+    }
+    final current = widget.controller.groupOf(subscription.id);
+    final choice = await _showChoices(
+      context,
+      AppStringKeys.subscriptionsMoveToGroup.l10n(context),
+      [
+        if (current != null)
+          const _Choice(
+            '',
+            HeroAppIcons.inbox,
+            AppStringKeys.subscriptionsUngrouped,
+          ),
+        for (final group in groups)
+          if (group.id != current)
+            _Choice(
+              group.id,
+              HeroAppIcons.folder,
+              group.title,
+              localize: false,
+            ),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    await widget.controller.moveSourceToGroup(
+      subscription.id,
+      choice.isEmpty ? null : choice,
+    );
+  }
+
+  Future<void> _groupMenu(SubscriptionGroup group) async {
+    final choice = await _showChoices(context, group.title, [
+      const _Choice(
+        'rename',
+        HeroAppIcons.pen,
+        AppStringKeys.subscriptionsRenameGroup,
+      ),
+      const _Choice(
+        'add',
+        HeroAppIcons.plus,
+        AppStringKeys.subscriptionsAddSources,
+      ),
+      const _Choice(
+        'delete',
+        HeroAppIcons.xmark,
+        AppStringKeys.subscriptionsDeleteGroup,
+      ),
+    ]);
+    if (!mounted || choice == null) return;
+    switch (choice) {
+      case 'rename':
+        await _renameGroup(group);
+      case 'add':
+        await _addSources(group);
+      case 'delete':
+        await _deleteGroup(group);
+    }
+  }
+
+  Future<void> _renameGroup(SubscriptionGroup group) async {
+    final title = await showAppTextEntryDialog(
+      context,
+      title: AppStringKeys.subscriptionsGroupName.l10n(context),
+      actionLabel: AppStringKeys.subscriptionsRenameGroup.l10n(context),
+      initial: group.title,
+      allowEmpty: false,
+    );
+    if (title == null || !mounted) return;
+    await widget.controller.renameGroup(group.id, title);
+  }
+
+  Future<void> _addSources(SubscriptionGroup group) async {
+    final members = group.sourceIds.toSet();
+    final available = [
+      for (final subscription in widget.controller.subscriptions)
+        if (!members.contains(subscription.id)) subscription,
+    ];
+    if (available.isEmpty) {
+      showToast(context, AppStringKeys.subscriptionsNoSourcesToAdd);
+      return;
+    }
+    final choice = await _showChoices(
+      context,
+      AppStringKeys.subscriptionsAddSources.l10n(context),
+      [
+        for (final subscription in available)
+          _Choice(
+            subscription.id,
+            subscription.kind == FeedSourceKind.telegram
+                ? HeroAppIcons.towerBroadcast
+                : HeroAppIcons.globe,
+            subscription.title,
+            localize: false,
+          ),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    await widget.controller.moveSourceToGroup(choice, group.id);
+  }
+
+  Future<void> _deleteGroup(SubscriptionGroup group) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStringKeys.subscriptionsDeleteGroup,
+      message: AppStringKeys.subscriptionsDeleteGroupMessage,
+      confirmText: AppStringKeys.subscriptionsDeleteGroup,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await widget.controller.deleteGroup(group.id);
   }
 
   Future<void> _unsubscribe(FeedSubscription subscription) async {
@@ -463,6 +649,12 @@ Future<void> showAddSubscriptionMenu(
             label: AppStringKeys.subscriptionsAddRss.l10n(dialogContext),
             onTap: () => Navigator.of(dialogContext).pop('rss'),
           ),
+          const SizedBox(height: 8),
+          _MenuChoice(
+            icon: HeroAppIcons.folder,
+            label: AppStringKeys.subscriptionsAddGroup.l10n(dialogContext),
+            onTap: () => Navigator.of(dialogContext).pop('group'),
+          ),
         ],
       ),
       actions: [
@@ -482,7 +674,75 @@ Future<void> showAddSubscriptionMenu(
     );
     return;
   }
+  if (choice == 'group') {
+    await _promptNewGroup(context, controller);
+    return;
+  }
   await _promptRssUrl(context, controller);
+}
+
+Future<void> _promptNewGroup(
+  BuildContext context,
+  SubscriptionFeedController controller,
+) async {
+  final title = await showAppTextEntryDialog(
+    context,
+    title: AppStringKeys.subscriptionsGroupName.l10n(context),
+    actionLabel: AppStringKeys.subscriptionsAddGroup.l10n(context),
+    allowEmpty: false,
+  );
+  if (title == null || !context.mounted) return;
+  final created = await controller.createGroup(title);
+  if (!context.mounted || created) return;
+  showToast(context, AppStringKeys.subscriptionsTooManyGroups);
+}
+
+class _Choice {
+  const _Choice(this.id, this.icon, this.label, {this.localize = true});
+
+  final String id;
+  final AppIconData icon;
+  final String label;
+  final bool localize;
+}
+
+Future<String?> _showChoices(
+  BuildContext context,
+  String title,
+  List<_Choice> choices,
+) {
+  return showGeneralDialog<String>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: AppStringKeys.countryPickerCancel.l10n(context),
+    barrierColor: const Color(0x99000000),
+    transitionDuration: AppMotion.duration(context, AppMotion.responsive),
+    transitionBuilder: AppMotion.dialogTransition,
+    pageBuilder: (dialogContext, _, _) => AppDialogSurface(
+      title: title,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < choices.length; index++) ...[
+            if (index > 0) const SizedBox(height: 8),
+            _MenuChoice(
+              icon: choices[index].icon,
+              label: choices[index].localize
+                  ? choices[index].label.l10n(dialogContext)
+                  : choices[index].label,
+              onTap: () => Navigator.of(dialogContext).pop(choices[index].id),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        AppDialogAction(
+          label: AppStringKeys.countryPickerCancel.l10n(dialogContext),
+          onTap: () => Navigator.of(dialogContext).pop(),
+        ),
+      ],
+    ),
+  );
 }
 
 mixin _FeedBinding<T extends StatefulWidget> on State<T> {
@@ -623,6 +883,8 @@ class _SourceRow extends StatelessWidget {
     required this.unread,
     required this.onTap,
     this.subtitle,
+    this.indent = 0,
+    this.onMenu,
     this.onRemove,
   });
 
@@ -631,7 +893,9 @@ class _SourceRow extends StatelessWidget {
   final String? subtitle;
   final bool selected;
   final int unread;
+  final double indent;
   final VoidCallback onTap;
+  final VoidCallback? onMenu;
   final VoidCallback? onRemove;
 
   @override
@@ -650,7 +914,7 @@ class _SourceRow extends StatelessWidget {
               selected: selected,
               onTap: onTap,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                padding: EdgeInsetsDirectional.fromSTEB(16 + indent, 12, 8, 12),
                 child: Row(
                   children: [
                     AppIcon(icon, size: 20, color: c.textSecondary),
@@ -695,6 +959,24 @@ class _SourceRow extends StatelessWidget {
               ),
             ),
           ),
+          if (onMenu != null)
+            AppInteractiveSurface(
+              semanticLabel: AppStringKeys.subscriptionsManage.l10n(context),
+              isButton: true,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
+              onTap: onMenu,
+              child: SizedBox(
+                width: 36,
+                height: 44,
+                child: Center(
+                  child: AppIcon(
+                    HeroAppIcons.ellipsis,
+                    size: 16,
+                    color: c.textTertiary,
+                  ),
+                ),
+              ),
+            ),
           if (onRemove != null)
             AppInteractiveSurface(
               semanticLabel: AppStringKeys.subscriptionsUnsubscribe.l10n(
@@ -715,6 +997,98 @@ class _SourceRow extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupRow extends StatelessWidget {
+  const _GroupRow({
+    required this.title,
+    required this.expanded,
+    required this.unread,
+    required this.onTap,
+    required this.onMenu,
+  });
+
+  final String title;
+  final bool expanded;
+  final int unread;
+  final VoidCallback onTap;
+  final VoidCallback onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final collapsed = Directionality.of(context) == TextDirection.rtl
+        ? HeroAppIcons.chevronLeft
+        : HeroAppIcons.chevronRight;
+    return ColoredBox(
+      color: c.background,
+      child: Row(
+        children: [
+          Expanded(
+            child: AppInteractiveSurface(
+              semanticLabel: title,
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(16, 12, 8, 12),
+                child: Row(
+                  children: [
+                    AppIcon(
+                      expanded ? HeroAppIcons.chevronDown : collapsed,
+                      size: 16,
+                      color: c.textTertiary,
+                    ),
+                    const SizedBox(width: 8),
+                    AppIcon(
+                      HeroAppIcons.folder,
+                      size: 20,
+                      color: c.textSecondary,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyle.body(
+                          c.textPrimary,
+                          weight: AppTextWeight.semibold,
+                        ),
+                      ),
+                    ),
+                    if (unread > 0)
+                      Text(
+                        unread > 99 ? '99+' : '$unread',
+                        style: AppTextStyle.caption(
+                          c.textSecondary,
+                          weight: AppTextWeight.semibold,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          AppInteractiveSurface(
+            semanticLabel: AppStringKeys.subscriptionsManage.l10n(context),
+            isButton: true,
+            borderRadius: BorderRadius.circular(AppRadius.sm),
+            onTap: onMenu,
+            child: SizedBox(
+              width: 36,
+              height: 44,
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.ellipsis,
+                  size: 16,
+                  color: c.textTertiary,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

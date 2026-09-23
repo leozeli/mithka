@@ -176,3 +176,115 @@ int compareFeedItems(FeedItem a, FeedItem b) {
   if (byDate != 0) return byDate;
   return b.id.compareTo(a.id);
 }
+
+/// One local folder of subscriptions. Groups do not nest.
+class SubscriptionGroup {
+  SubscriptionGroup({
+    required this.id,
+    required this.title,
+    required List<String> sourceIds,
+    this.expanded = true,
+  }) : sourceIds = List<String>.unmodifiable(sourceIds);
+
+  final String id;
+  final String title;
+  final List<String> sourceIds;
+  final bool expanded;
+
+  SubscriptionGroup copyWith({
+    String? title,
+    List<String>? sourceIds,
+    bool? expanded,
+  }) {
+    return SubscriptionGroup(
+      id: id,
+      title: title ?? this.title,
+      sourceIds: sourceIds ?? this.sourceIds,
+      expanded: expanded ?? this.expanded,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'sourceIds': sourceIds,
+    'expanded': expanded,
+  };
+
+  static SubscriptionGroup? fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    final title = json['title'];
+    if (id is! String || id.isEmpty || title is! String) return null;
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return null;
+    final rawIds = json['sourceIds'];
+    final ids = <String>[];
+    if (rawIds is List) {
+      for (final sourceId in rawIds) {
+        if (sourceId is! String || sourceId.isEmpty || ids.contains(sourceId)) {
+          continue;
+        }
+        ids.add(sourceId);
+      }
+    }
+    final expanded = json['expanded'];
+    return SubscriptionGroup(
+      id: id,
+      title: trimmed,
+      sourceIds: ids,
+      expanded: expanded is bool ? expanded : true,
+    );
+  }
+}
+
+enum SubscriptionOutlineKind { group, source }
+
+/// One row in the source list. Ungrouped sources come first, then each group
+/// and, when it is expanded, the sources that belong to it.
+class SubscriptionOutlineRow {
+  const SubscriptionOutlineRow.group(this.group)
+    : source = null,
+      nested = false,
+      kind = SubscriptionOutlineKind.group;
+
+  const SubscriptionOutlineRow.source(this.source, {this.nested = false})
+    : group = null,
+      kind = SubscriptionOutlineKind.source;
+
+  final SubscriptionOutlineKind kind;
+  final SubscriptionGroup? group;
+  final FeedSubscription? source;
+  final bool nested;
+}
+
+List<SubscriptionOutlineRow> subscriptionOutline({
+  required List<FeedSubscription> subscriptions,
+  required List<SubscriptionGroup> groups,
+}) {
+  final byId = {
+    for (final subscription in subscriptions) subscription.id: subscription,
+  };
+  final owner = <String, String>{};
+  for (final group in groups) {
+    for (final id in group.sourceIds) {
+      if (!byId.containsKey(id)) continue;
+      owner.putIfAbsent(id, () => group.id);
+    }
+  }
+  final rows = <SubscriptionOutlineRow>[];
+  for (final subscription in subscriptions) {
+    if (owner.containsKey(subscription.id)) continue;
+    rows.add(SubscriptionOutlineRow.source(subscription));
+  }
+  for (final group in groups) {
+    rows.add(SubscriptionOutlineRow.group(group));
+    if (!group.expanded) continue;
+    for (final id in group.sourceIds) {
+      if (owner[id] != group.id) continue;
+      final source = byId[id];
+      if (source == null) continue;
+      rows.add(SubscriptionOutlineRow.source(source, nested: true));
+    }
+  }
+  return rows;
+}

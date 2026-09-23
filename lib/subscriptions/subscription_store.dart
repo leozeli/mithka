@@ -18,14 +18,18 @@ class SubscriptionStore {
   static const softCap = 100;
   static const maxItemsPerSubscription = 40;
   static const maxReadIds = 4000;
+  static const maxGroups = 40;
+  static const maxGroupTitle = 80;
 
   final SharedPreferences? preferences;
   final bool persist;
 
   final List<FeedSubscription> _subscriptions = [];
+  final List<SubscriptionGroup> _groups = [];
   final Map<String, List<FeedItem>> _items = {};
   final Map<String, int> _cursors = {};
   final List<String> _readIds = [];
+  int _groupSerial = 0;
 
   int _slot = 0;
   int? _userId;
@@ -39,6 +43,19 @@ class SubscriptionStore {
 
   List<FeedSubscription> get subscriptions =>
       List<FeedSubscription>.unmodifiable(_subscriptions);
+
+  List<SubscriptionGroup> get groups =>
+      List<SubscriptionGroup>.unmodifiable(_groups);
+
+  List<SubscriptionOutlineRow> outline() =>
+      subscriptionOutline(subscriptions: _subscriptions, groups: _groups);
+
+  String? groupOf(String sourceId) {
+    for (final group in _groups) {
+      if (group.sourceIds.contains(sourceId)) return group.id;
+    }
+    return null;
+  }
 
   static String storageKeyForUser(int userId) =>
       'mithka.subscriptions.user.$userId';
@@ -99,8 +116,9 @@ class SubscriptionStore {
           _dirty = false;
           await _write(prefs, userId);
         } else {
-          _read(prefs, userId);
+          final pruned = _read(prefs, userId);
           _dirty = false;
+          if (pruned) await _write(prefs, userId);
         }
       } catch (_) {
         _dirty = keepMemory;
@@ -136,6 +154,7 @@ class SubscriptionStore {
       final removed = _items.remove(id);
       _subscriptions.removeWhere((item) => item.id == id);
       _cursors.remove(id);
+      _stripSourceFromGroups(id);
       if (removed != null) {
         final ids = removed.map((item) => item.id).toSet();
         _readIds.removeWhere(ids.contains);
@@ -207,6 +226,67 @@ class SubscriptionStore {
     });
   }
 
+  Future<String?> createGroup(String rawTitle) {
+    return _serialized(() async {
+      final title = _groupTitle(rawTitle);
+      if (title == null || _groups.length >= maxGroups) return null;
+      final id =
+          'grp:${++_groupSerial}:${DateTime.now().microsecondsSinceEpoch}';
+      _groups.add(SubscriptionGroup(id: id, title: title, sourceIds: const []));
+      await _persist();
+      return id;
+    });
+  }
+
+  Future<bool> renameGroup(String id, String rawTitle) {
+    return _serialized(() async {
+      final title = _groupTitle(rawTitle);
+      final index = _groups.indexWhere((group) => group.id == id);
+      if (title == null || index < 0) return false;
+      _groups[index] = _groups[index].copyWith(title: title);
+      await _persist();
+      return true;
+    });
+  }
+
+  Future<void> deleteGroup(String id) {
+    return _serialized(() async {
+      final before = _groups.length;
+      _groups.removeWhere((group) => group.id == id);
+      if (_groups.length == before) return;
+      await _persist();
+    });
+  }
+
+  Future<void> setGroupExpanded(String id, bool expanded) {
+    return _serialized(() async {
+      final index = _groups.indexWhere((group) => group.id == id);
+      if (index < 0 || _groups[index].expanded == expanded) return;
+      _groups[index] = _groups[index].copyWith(expanded: expanded);
+      await _persist();
+    });
+  }
+
+  /// [groupId] null leaves the source ungrouped. A source belongs to one group.
+  Future<void> moveSourceToGroup(String sourceId, String? groupId) {
+    return _serialized(() async {
+      if (!_subscriptions.any((item) => item.id == sourceId)) return;
+      var changed = false;
+      for (var index = 0; index < _groups.length; index++) {
+        final group = _groups[index];
+        final ids = [
+          for (final id in group.sourceIds)
+            if (id != sourceId) id,
+          if (group.id == groupId) sourceId,
+        ];
+        if (_sameIds(ids, group.sourceIds)) continue;
+        _groups[index] = group.copyWith(sourceIds: ids);
+        changed = true;
+      }
+      if (changed) await _persist();
+    });
+  }
+
   Future<T> _serialized<T>(Future<T> Function() action) {
     final run = _queue.then((_) => action());
     _queue = run.then((_) {}, onError: (_) {});
@@ -232,13 +312,13 @@ class SubscriptionStore {
   Future<SharedPreferences> _prefs() async =>
       preferences ?? await SharedPreferences.getInstance();
 
-  void _read(SharedPreferences prefs, int userId) {
+  bool _read(SharedPreferences prefs, int userId) {
     _clearLists();
     final raw = prefs.getString(storageKeyForUser(userId));
-    if (raw == null || raw.isEmpty) return;
+    if (raw == null || raw.isEmpty) return false;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! Map) return;
+      if (decoded is! Map) return false;
       final map = Map<String, dynamic>.from(decoded);
       final subscriptions = map['subscriptions'];
       if (subscriptions is List) {
@@ -289,9 +369,46 @@ class SubscriptionStore {
           if (_readIds.length >= maxReadIds) break;
         }
       }
+      return _readGroups(map['groups']);
     } catch (_) {
       _clearLists();
+      return false;
     }
+  }
+
+  bool _readGroups(Object? raw) {
+    if (raw == null) return false;
+    if (raw is! List) return true;
+    final known = _subscriptions.map((item) => item.id).toSet();
+    final claimed = <String>{};
+    var pruned = false;
+    for (final entry in raw) {
+      if (entry is! Map) {
+        pruned = true;
+        continue;
+      }
+      final group = SubscriptionGroup.fromJson(
+        Map<String, dynamic>.from(entry),
+      );
+      if (group == null || _groups.any((item) => item.id == group.id)) {
+        pruned = true;
+        continue;
+      }
+      final kept = <String>[];
+      for (final id in group.sourceIds) {
+        if (!known.contains(id) || !claimed.add(id)) {
+          pruned = true;
+          continue;
+        }
+        kept.add(id);
+      }
+      _groups.add(group.copyWith(sourceIds: kept));
+      if (_groups.length >= maxGroups) {
+        if (raw.length > _groups.length) pruned = true;
+        break;
+      }
+    }
+    return pruned;
   }
 
   Future<void> _write(SharedPreferences prefs, int userId) {
@@ -306,6 +423,7 @@ class SubscriptionStore {
       },
       'cursors': _cursors,
       'readIds': _readIds,
+      'groups': [for (final group in _groups) group.toJson()],
     };
     return prefs.setString(storageKeyForUser(userId), jsonEncode(payload));
   }
@@ -318,8 +436,37 @@ class SubscriptionStore {
 
   void _clearLists() {
     _subscriptions.clear();
+    _groups.clear();
     _items.clear();
     _cursors.clear();
     _readIds.clear();
+  }
+
+  void _stripSourceFromGroups(String sourceId) {
+    for (var index = 0; index < _groups.length; index++) {
+      final group = _groups[index];
+      if (!group.sourceIds.contains(sourceId)) continue;
+      _groups[index] = group.copyWith(
+        sourceIds: [
+          for (final id in group.sourceIds)
+            if (id != sourceId) id,
+        ],
+      );
+    }
+  }
+
+  String? _groupTitle(String raw) {
+    final title = raw.trim();
+    if (title.isEmpty) return null;
+    if (title.length <= maxGroupTitle) return title;
+    return title.substring(0, maxGroupTitle).trimRight();
+  }
+
+  bool _sameIds(List<String> next, List<String> current) {
+    if (next.length != current.length) return false;
+    for (var index = 0; index < next.length; index++) {
+      if (next[index] != current[index]) return false;
+    }
+    return true;
   }
 }
