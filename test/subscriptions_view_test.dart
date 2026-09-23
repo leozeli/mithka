@@ -13,6 +13,7 @@ import 'package:mithka/subscriptions/subscription_channel_picker.dart';
 import 'package:mithka/subscriptions/subscription_feed_controller.dart';
 import 'package:mithka/subscriptions/subscription_store.dart';
 import 'package:mithka/subscriptions/subscriptions_view.dart';
+import 'package:mithka/theme/app_motion.dart';
 import 'package:mithka/theme/app_theme.dart';
 import 'package:mithka/theme/theme_controller.dart';
 import 'package:provider/provider.dart';
@@ -196,6 +197,54 @@ void main() {
     );
     await tester.pump();
     expect(find.text('https://example.com/atom.xml'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('text entry dialog survives the exit animation after confirm', (
+    tester,
+  ) async {
+    String? submitted;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          brightness: Brightness.light,
+          extensions: [AppColors.light],
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                submitted = await showAppTextEntryDialog(
+                  context,
+                  title: 'Group name',
+                  actionLabel: 'Create',
+                  allowEmpty: false,
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'News');
+    await tester.tap(find.text('Create'));
+    await tester.pump();
+    await tester.pump(AppMotion.responsive);
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(submitted, 'News');
+    expect(find.byType(TextField), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
