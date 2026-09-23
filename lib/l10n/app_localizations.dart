@@ -3348,6 +3348,8 @@ abstract final class AppStringKeys {
   static const chatFolderGroupDelete = 'chatFolderGroupDelete';
   static const chatFolderGroupDeleteConfirm = 'chatFolderGroupDeleteConfirm';
   static const chatFolderGroupNameHint = 'chatFolderGroupNameHint';
+  static const chatFolderGroupMoveDown = 'chatFolderGroupMoveDown';
+  static const chatFolderGroupMoveUp = 'chatFolderGroupMoveUp';
   static const chatFolderGroupRemoveFolder = 'chatFolderGroupRemoveFolder';
   static const chatFolderGroupRename = 'chatFolderGroupRename';
   static const chatFolderManagementAllChats = 'chatFolderManagementAllChats';

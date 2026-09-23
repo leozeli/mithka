@@ -824,6 +824,8 @@
     <string name="chatFolderGroupNameHint">그룹 이름</string>
     <string name="chatFolderGroupRemoveFolder">로컬 그룹에서 제거</string>
     <string name="chatFolderGroupRename">로컬 그룹 이름 바꾸기</string>
+    <string name="chatFolderGroupMoveUp">위로 이동</string>
+    <string name="chatFolderGroupMoveDown">아래로 이동</string>
     <string name="chatFolderManagementAddChat">채팅 추가</string>
     <string name="chatFolderManagementAddExcludedChat">제외할 채팅 추가</string>
     <string name="chatFolderManagementAddIncludedChat">포함할 채팅 추가</string>

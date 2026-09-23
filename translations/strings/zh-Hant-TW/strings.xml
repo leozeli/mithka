@@ -824,6 +824,8 @@
     <string name="chatFolderGroupNameHint">群組名稱</string>
     <string name="chatFolderGroupRemoveFolder">從本機群組移除</string>
     <string name="chatFolderGroupRename">重新命名本機群組</string>
+    <string name="chatFolderGroupMoveUp">上移</string>
+    <string name="chatFolderGroupMoveDown">下移</string>
     <string name="chatFolderManagementAddChat">新增聊天</string>
     <string name="chatFolderManagementAddExcludedChat">新增排除的聊天</string>
     <string name="chatFolderManagementAddIncludedChat">新增包含的聊天</string>

@@ -824,6 +824,8 @@
     <string name="chatFolderGroupNameHint">Nombre del grupo</string>
     <string name="chatFolderGroupRemoveFolder">Quitar del grupo local</string>
     <string name="chatFolderGroupRename">Renombrar grupo local</string>
+    <string name="chatFolderGroupMoveUp">Subir</string>
+    <string name="chatFolderGroupMoveDown">Bajar</string>
     <string name="chatFolderManagementAddChat">Añadir chat</string>
     <string name="chatFolderManagementAddExcludedChat">Añadir chat excluido</string>
     <string name="chatFolderManagementAddIncludedChat">Añadir chat incluido</string>

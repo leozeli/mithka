@@ -98,6 +98,50 @@ void main() {
       );
     });
 
+    test(
+      'reorders groups and folders locally without touching peers',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final store = LocalFolderGroupStore();
+        await store.bind(slot: 1, userId: 11);
+        final first = await store.create(
+          title: 'A',
+          childFolderIds: const [7, 3],
+        );
+        final second = await store.create(title: 'B');
+        expect(await store.moveGroupBy(second!.id, -1), isTrue);
+        expect(store.groups.map((group) => group.title), ['B', 'A']);
+        expect(store.canMoveGroup(second.id, -1), isFalse);
+        expect(await store.moveFolderBy(3, -1, const [7, 3, 9, 4]), isTrue);
+        expect(store.groupFor(first!.id)?.childFolderIds, [3, 7]);
+        expect(await store.moveFolderBy(4, -1, const [7, 3, 9, 4]), isTrue);
+        expect(store.ungroupedDisplayOrder(const [7, 3, 9, 4]), [4, 9]);
+        expect(store.directoryFolderIds(const [7, 3, 9, 4]), [4, 9, 3, 7]);
+
+        final reloaded = LocalFolderGroupStore();
+        expect(await reloaded.bind(slot: 1, userId: 11), isTrue);
+        expect(reloaded.groups.map((group) => group.title), ['B', 'A']);
+        expect(reloaded.groupFor(first.id)?.childFolderIds, [3, 7]);
+        expect(reloaded.ungroupedDisplayOrder(const [7, 3, 9, 4, 5]), [
+          4,
+          9,
+          5,
+        ]);
+      },
+    );
+
+    test('an older group list still loads', () async {
+      SharedPreferences.setMockInitialValues({
+        LocalFolderGroupStore.storageKeyForUser(
+          4,
+        ): '[{"id":"g1","title":"Focus","iconName":"Custom","childFolderIds":[7],"expanded":true}]',
+      });
+      final store = LocalFolderGroupStore();
+      expect(await store.bind(slot: 0, userId: 4), isTrue);
+      expect(store.groups.single.childFolderIds, [7]);
+      expect(store.ungroupedDisplayOrder(const [7, 8]), [8]);
+    });
+
     test('orphaned ids are pruned and the empty group remains', () async {
       final store = LocalFolderGroupStore(
         persist: false,

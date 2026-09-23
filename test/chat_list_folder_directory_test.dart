@@ -456,6 +456,21 @@ void main() {
       expect(find.byKey(const ValueKey('chat-list-folder-3')), findsOneWidget);
       expect(find.byType(ChatFolderRail), findsNothing);
 
+      await _secondaryClick(
+        tester,
+        find.byKey(const ValueKey('chat-list-folder-4')),
+      );
+      await tester.tap(find.text('Move up'));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-4'))).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-3')))
+              .dy,
+        ),
+      );
+
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 6));
     },

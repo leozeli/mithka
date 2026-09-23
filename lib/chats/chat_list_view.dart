@@ -2679,7 +2679,9 @@ class _ChatListViewState extends State<ChatListView>
           );
           final allExpanded = _expandedFolderIds.contains(null);
           final slots = buildChatListFolderDirectory(
-            folderIds: [for (final filter in folderFilters) filter.folderId!],
+            folderIds: _folderGroups.directoryFolderIds([
+              for (final filter in folderFilters) filter.folderId!,
+            ]),
             expandedFolderIds: expandedFolderIds,
             allExpanded: allExpanded,
             folderEntryCounts: folderEntryCounts,
@@ -2908,6 +2910,7 @@ class _ChatListViewState extends State<ChatListView>
     ];
     final folderId = filter.folderId;
     if (folderId == null) return actions;
+    actions.addAll(_folderMoveActions(folderId));
     final current = _folderGroups.groupContaining(folderId);
     if (current != null) {
       actions.add(
@@ -2947,6 +2950,13 @@ class _ChatListViewState extends State<ChatListView>
 
   List<DesktopRowAction> _localGroupActions(LocalFolderGroup group) {
     return [
+      ..._moveActions(
+        idPrefix: 'local-folder-group',
+        canUp: _folderGroups.canMoveGroup(group.id, -1),
+        canDown: _folderGroups.canMoveGroup(group.id, 1),
+        onUp: () => unawaited(_folderGroups.moveGroupBy(group.id, -1)),
+        onDown: () => unawaited(_folderGroups.moveGroupBy(group.id, 1)),
+      ),
       DesktopRowAction(
         id: 'rename-local-folder-group',
         label: AppStringKeys.chatFolderGroupRename,
@@ -2960,6 +2970,49 @@ class _ChatListViewState extends State<ChatListView>
         color: AppTheme.tagRed,
         onInvoke: () => unawaited(_deleteLocalFolderGroup(group)),
       ),
+    ];
+  }
+
+  List<int> get _telegramFolderIds => [
+    for (final filter in _model.filters)
+      if (!filter.isAll && filter.folderId != null) filter.folderId!,
+  ];
+
+  List<DesktopRowAction> _folderMoveActions(int folderId) {
+    final telegramIds = _telegramFolderIds;
+    return _moveActions(
+      idPrefix: 'folder',
+      canUp: _folderGroups.canMoveFolder(folderId, -1, telegramIds),
+      canDown: _folderGroups.canMoveFolder(folderId, 1, telegramIds),
+      onUp: () =>
+          unawaited(_folderGroups.moveFolderBy(folderId, -1, telegramIds)),
+      onDown: () =>
+          unawaited(_folderGroups.moveFolderBy(folderId, 1, telegramIds)),
+    );
+  }
+
+  List<DesktopRowAction> _moveActions({
+    required String idPrefix,
+    required bool canUp,
+    required bool canDown,
+    required VoidCallback onUp,
+    required VoidCallback onDown,
+  }) {
+    return [
+      if (canUp)
+        DesktopRowAction(
+          id: 'move-$idPrefix-up',
+          label: AppStringKeys.chatFolderGroupMoveUp,
+          icon: HeroAppIcons.arrowUp,
+          onInvoke: onUp,
+        ),
+      if (canDown)
+        DesktopRowAction(
+          id: 'move-$idPrefix-down',
+          label: AppStringKeys.chatFolderGroupMoveDown,
+          icon: HeroAppIcons.arrowDown,
+          onInvoke: onDown,
+        ),
     ];
   }
 

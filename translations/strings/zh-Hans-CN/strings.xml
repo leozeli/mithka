@@ -824,6 +824,8 @@
     <string name="chatFolderGroupNameHint">分组名称</string>
     <string name="chatFolderGroupRemoveFolder">从本地分组移除</string>
     <string name="chatFolderGroupRename">重命名本地分组</string>
+    <string name="chatFolderGroupMoveUp">上移</string>
+    <string name="chatFolderGroupMoveDown">下移</string>
     <string name="chatFolderManagementAddChat">添加聊天</string>
     <string name="chatFolderManagementAddExcludedChat">添加排除的聊天</string>
     <string name="chatFolderManagementAddIncludedChat">添加包含的聊天</string>
