@@ -47,6 +47,37 @@ void main() {
     expect(html!.contains('Navigation links here'), isFalse);
   });
 
+  test('keeps heading ids and in-page toc links', () {
+    final html = extractReadableHtml('''
+<!DOCTYPE html>
+<html>
+<head><title>Guide</title></head>
+<body>
+<article>
+  <h1>Deployment guide for the service</h1>
+  <p>This guide explains how to install, configure, and operate the service
+  in production. It is long enough that reader mode keeps the article.</p>
+  <ul>
+    <li><a href="#prepare">Prepare the host</a></li>
+    <li><a href="#launch">Launch the process</a></li>
+  </ul>
+  <h2 id="prepare">Prepare the host</h2>
+  <p>Install the runtime, open the port, and create the account that the
+  process will use. These steps are part of the article body.</p>
+  <h2 id="launch">Launch the process</h2>
+  <p>Start the service, check the logs, and confirm the health endpoint
+  returns success before sending traffic.</p>
+</article>
+</body>
+</html>
+''', baseUri: 'https://example.com/guide');
+    expect(html, isNotNull);
+    expect(html, contains('id="prepare"'));
+    expect(html, contains('href="#prepare"'));
+    expect(html, contains('id="launch"'));
+    expect(html, contains('href="#launch"'));
+  });
+
   test('returns null when the page has no article', () {
     expect(
       extractReadableHtml('<html><body><nav>Menu</nav></body></html>'),

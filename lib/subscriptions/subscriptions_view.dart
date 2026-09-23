@@ -662,6 +662,7 @@ class _SubscriptionItemPageState extends State<SubscriptionItemPage> {
                               SubscriptionArticleBody(
                                 text: body,
                                 html: html,
+                                pageUrl: item.link,
                                 onOpenLink: (url) => openLink(context, url),
                               ),
                             ],
