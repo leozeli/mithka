@@ -111,13 +111,10 @@ class ChatListViewModel extends ChangeNotifier {
     return entries;
   }
 
-  /// One neighbouring folder's projection, kept beside the selected one so a
-  /// live folder swipe can render the list it is about to reveal. A single slot
-  /// is enough: a gesture peeks at one folder at a time, and the drag re-reads
-  /// it on every frame.
-  int? _peekFolderId;
-  bool _peekCommunitiesEnabled = true;
-  List<CommunityChatListEntry>? _peekEntries;
+  /// Projections for folders shown beside the selected list. Expanding several
+  /// sections in the message list reads more than one folder per frame, so the
+  /// cache is keyed instead of keeping a single peek slot.
+  final Map<String, List<CommunityChatListEntry>> _folderEntriesCache = {};
 
   /// [chatListEntries] for an arbitrary folder, leaving the selection alone.
   List<CommunityChatListEntry> chatListEntriesForFolder(
@@ -127,21 +124,16 @@ class ChatListViewModel extends ChangeNotifier {
     if (folderId == _selectedFilter.folderId) {
       return chatListEntries(communitiesEnabled: communitiesEnabled);
     }
-    final cached = _peekEntries;
-    if (cached != null &&
-        _peekFolderId == folderId &&
-        _peekCommunitiesEnabled == communitiesEnabled) {
-      return cached;
-    }
+    final key = '${folderId ?? 'main'}\t$communitiesEnabled';
+    final cached = _folderEntriesCache[key];
+    if (cached != null) return cached;
     final entries = CommunityChatListProjection.build(
       chats: chatsForFolder(folderId),
       communityByChat: _communityByChat,
       communities: _communities,
       communitiesEnabled: communitiesEnabled,
     );
-    _peekFolderId = folderId;
-    _peekCommunitiesEnabled = communitiesEnabled;
-    _peekEntries = entries;
+    _folderEntriesCache[key] = entries;
     return entries;
   }
 
@@ -153,8 +145,20 @@ class ChatListViewModel extends ChangeNotifier {
 
   void _invalidateEntriesCaches() {
     _entriesCache = null;
-    _peekEntries = null;
+    _folderEntriesCache.clear();
   }
+
+  /// True while a page of [folderId] (null = main list) is being loaded.
+  bool isChatListLoading(int? folderId) => _chatListLoadOperations.containsKey(
+    _chatListKey(
+      folderId == null
+          ? <String, dynamic>{'@type': 'chatListMain'}
+          : <String, dynamic>{
+              '@type': 'chatListFolder',
+              'chat_folder_id': folderId,
+            },
+    ),
+  );
 
   List<ChatFilterOption> get filters => _filters;
   ChatFilterOption get selectedFilter => _selectedFilter;
@@ -621,7 +625,7 @@ class ChatListViewModel extends ChangeNotifier {
 
   // MARK: - Row actions (swipe)
 
-  void togglePin(ChatSummary chat) {
+  void togglePin(ChatSummary chat, {Map<String, dynamic>? chatList}) {
     final newValue = !chat.isPinned;
     final id = chat.id;
     _mutate(id, (s) => s.isPinned = newValue);
@@ -630,8 +634,9 @@ class ChatListViewModel extends ChangeNotifier {
     _chatListQuery({
       '@type': 'toggleChatIsPinned',
       // Pin in the list the user is looking at — pinning from a folder
-      // filter used to silently mutate the Main list instead.
-      'chat_list': _activeChatList,
+      // filter used to silently mutate the Main list instead. Callers that
+      // show several lists at once pass the section's list explicitly.
+      'chat_list': chatList ?? _activeChatList,
       'chat_id': id,
       'is_pinned': newValue,
     }).catchError((Object error) async {

@@ -123,7 +123,7 @@ enum ArchivedChatsDisplayMode {
 enum ChatFolderDisplayMode {
   hidden(AppStringKeys.appearanceChatFoldersHidden, HeroAppIcons.eyeSlash),
   menu(AppStringKeys.appearanceChatFoldersMenu, HeroAppIcons.folder),
-  tabs(AppStringKeys.appearanceChatFoldersTabs, HeroAppIcons.tableColumns);
+  tabs(AppStringKeys.appearanceChatFoldersTabs, HeroAppIcons.listCheck);
 
   const ChatFolderDisplayMode(this.label, this._icon);
   final String label;

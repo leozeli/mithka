@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_client.dart';
@@ -13,7 +14,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   final updates = StreamController<Map<String, dynamic>>.broadcast();
   setUpAll(() {
-    // Exercise the real folder UI without accessing a Telegram account.
     TdClient.shared.configureProxy(
       TdClientProxyTransport(
         accountSlot: 0,
@@ -32,86 +32,43 @@ void main() {
   });
 
   testWidgets(
-    'rail highlight follows the chat-list slide before it lands',
+    'folders expand in the list and the outer rail stays empty',
     (tester) async {
       await _pumpFolders(tester, updates);
-      expect(_highlight(tester, null), closeTo(0.1, 0.001));
-      expect(_highlight(tester, 1), 0);
+      final controller = tester
+          .widget<ChatListView>(find.byType(ChatListView))
+          .controller!;
+      expect(find.byType(ChatFolderRail), findsNothing);
+      expect(controller.sideFolders.value, isNull);
+      expect(_header(tester, null).expanded, isTrue);
+      expect(_header(tester, 1).expanded, isFalse);
 
-      await tester.tap(find.byKey(const ValueKey('side-folder-1')));
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-
-      final panes = tester.widget<ChatListFolderPanes>(
-        find.byType(ChatListFolderPanes),
-      );
-      final progress = panes.offset.value.abs() / panes.width;
-      expect(progress, allOf(greaterThan(0), lessThan(1)));
-      expect(panes.peek, isNotNull);
-      expect(_highlight(tester, 1), closeTo(0.1 * progress, 0.001));
-      expect(_highlight(tester, null), closeTo(0.1 * (1 - progress), 0.001));
-
-      // Interrupt the first slide: the next target must animate immediately too.
-      await tester.tap(find.byKey(const ValueKey('side-folder-2')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      expect(_highlight(tester, 2), greaterThan(0));
-      expect(_highlight(tester, 1), lessThan(0.1));
-      await tester.pumpAndSettle();
-      expect(_highlight(tester, 2), closeTo(0.1, 0.001));
-      expect(_highlight(tester, 1), 0);
-      expect(
-        tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        2,
-      );
-      await _disposeFolders(tester);
-    },
-    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
-  );
-
-  testWidgets(
-    'partially visible folder scrolls into view during the list slide',
-    (tester) async {
-      await _pumpFolders(tester, updates);
-      final rail = find.byType(ChatFolderRail);
-      final scrollable = tester.state<ScrollableState>(
-        find.descendant(of: rail, matching: find.byType(Scrollable)),
-      );
-      final viewport = tester.getRect(rail);
-      final target = find.byKey(const ValueKey('side-folder-3'));
-      expect(tester.getRect(target).bottom, greaterThan(viewport.bottom));
-      expect(tester.getRect(target).top, lessThan(viewport.bottom));
-      await tester.tapAt(Offset(viewport.center.dx, viewport.bottom - 4));
-      await tester.pump();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 80));
-      expect(scrollable.position.pixels, greaterThan(0));
+      expect(_header(tester, 1).expanded, isTrue);
+      expect(_header(tester, null).expanded, isTrue);
       expect(
         tester
             .widget<ChatListFolderPanes>(find.byType(ChatListFolderPanes))
             .peek,
-        isNotNull,
+        isNull,
       );
-      await tester.pumpAndSettle();
-      expect(
-        tester.getRect(target).bottom,
-        lessThanOrEqualTo(viewport.bottom + 1),
-      );
+
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
+      await tester.pump();
+      expect(_header(tester, 1).expanded, isFalse);
       await _disposeFolders(tester);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
 
   testWidgets(
-    'reduced motion switches the rail and list together',
+    'reduced motion still expands a folder section in place',
     (tester) async {
       await _pumpFolders(tester, updates, reducedMotion: true);
-      await tester.tap(find.byKey(const ValueKey('side-folder-1')));
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
       await tester.pump();
-      await tester.pump();
-      expect(_highlight(tester, 1), closeTo(0.1, 0.001));
+      expect(_header(tester, 1).expanded, isTrue);
       expect(
         tester
             .widget<ChatListFolderPanes>(find.byType(ChatListFolderPanes))
@@ -120,10 +77,11 @@ void main() {
       );
       await _disposeFolders(tester);
     },
-    variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
+
   testWidgets(
-    'canceling a folder drag restores the original rail highlight',
+    'a horizontal drag does not page away from the folder list',
     (tester) async {
       await _pumpFolders(tester, updates);
       final gesture = await tester.startGesture(
@@ -133,28 +91,21 @@ void main() {
       await tester.pump();
       await gesture.moveBy(const Offset(-100, 0));
       await tester.pump();
-      expect(_highlight(tester, 1), greaterThan(0));
       await gesture.cancel();
       await tester.pumpAndSettle();
-      expect(_highlight(tester, 1), 0);
-      expect(_highlight(tester, null), closeTo(0.1, 0.001));
-      expect(
-        tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        isNull,
-      );
+      expect(_header(tester, null).expanded, isTrue);
+      expect(_header(tester, 1).expanded, isFalse);
+      expect(find.byType(ChatFolderRail), findsNothing);
       await _disposeFolders(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.iOS),
   );
 }
 
-double _highlight(WidgetTester tester, int? folderId) {
-  final tile = tester.widget<Container>(
-    find.byKey(ValueKey('side-folder-${folderId ?? 'all'}')),
+ChatListFolderHeader _header(WidgetTester tester, int? folderId) {
+  return tester.widget<ChatListFolderHeader>(
+    find.byKey(ValueKey('chat-list-folder-${folderId ?? 'all'}')),
   );
-  return (tile.decoration! as BoxDecoration).color?.a ?? 0;
 }
 
 Future<void> _pumpFolders(

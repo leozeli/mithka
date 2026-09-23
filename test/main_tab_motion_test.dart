@@ -17,6 +17,7 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/chats/archived_chats_view.dart';
+import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/search_view.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
@@ -34,7 +35,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('folder slides never reset to All or toggle the Messages tab', (
+  testWidgets('expanding list folders keeps All open and the Messages tab', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -62,31 +63,30 @@ void main() {
           .widget<ChatListView>(find.byType(ChatListView))
           .controller!;
       final toggles = controller.toggleFirstUnreadRequests;
-      await tester.tap(find.byKey(const ValueKey('side-folder-1')));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        1,
-      );
-      await tester.tap(find.byKey(const ValueKey('side-folder-2')));
+      expect(find.byType(ChatFolderRail), findsNothing);
+      expect(controller.sideFolders.value, isNull);
+      final all = find.byKey(const ValueKey('chat-list-folder-all'));
+      final work = find.byKey(const ValueKey('chat-list-folder-1'));
+      expect(tester.widget<ChatListFolderHeader>(all).expanded, isTrue);
+      expect(tester.widget<ChatListFolderHeader>(work).expanded, isFalse);
+      await tester.tap(work);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-2')));
       for (var frame = 0; frame < 24; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
-        expect(
-          tester
-              .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-              .selectedFolderId,
-          isNotNull,
-        );
+        expect(tester.widget<ChatListFolderHeader>(all).expanded, isTrue);
+        expect(find.byType(ChatFolderRail), findsNothing);
       }
       expect(controller.toggleFirstUnreadRequests, toggles);
       expect(
         tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        2,
+            .widget<ChatListFolderHeader>(
+              find.byKey(const ValueKey('chat-list-folder-2')),
+            )
+            .expanded,
+        isTrue,
       );
+      expect(tester.widget<ChatListFolderHeader>(work).expanded, isTrue);
       await _disposeShell(tester);
     } finally {
       debugDefaultTargetPlatformOverride = null;
