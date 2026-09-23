@@ -56,6 +56,7 @@ import 'components/drawer_controller.dart' as dc;
 import 'components/keyboard_dismiss_on_tap.dart';
 import 'l10n/app_locale_controller.dart';
 import 'l10n/app_localizations.dart';
+import 'media/linux_chat_video_playback.dart';
 import 'media/video_view_compatibility.dart';
 import 'notifications/in_app_notification_banner.dart';
 import 'notifications/notification_controller.dart';
@@ -299,6 +300,8 @@ void _initializeVideoBackend({bool installGlobalLogHandler = true}) {
           FVideoFvpPlatform.macos,
           FVideoFvpPlatform.windows,
         },
+        // Linux-only. Other platforms keep FVP's hardware-decoder default.
+        videoDecoders: fvpVideoDecodersFor(defaultTargetPlatform),
         installGlobalLogHandler: installGlobalLogHandler,
       ),
     );
