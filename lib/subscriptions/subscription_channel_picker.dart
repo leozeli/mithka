@@ -9,7 +9,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/photo_avatar.dart';
 import '../components/toast.dart';
@@ -97,9 +96,12 @@ class _AddTelegramSubscriptionPageState
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return ColoredBox(
-      color: c.background,
-      child: Column(
+    // Pushed on the root navigator from the desktop sidebar, so this route is
+    // not under the tab shell's Material. Scaffold supplies that ancestor for
+    // the search field and a bounded body for the channel list.
+    return Scaffold(
+      backgroundColor: c.background,
+      body: Column(
         children: [
           NavHeader(
             title: AppStringKeys.subscriptionsAddTelegram,
@@ -107,43 +109,10 @@ class _AddTelegramSubscriptionPageState
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: c.searchFill,
-                borderRadius: BorderRadius.circular(AppRadius.card),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Row(
-                  children: [
-                    AppIcon(
-                      HeroAppIcons.magnifyingGlass,
-                      size: 18,
-                      color: c.textTertiary,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _search,
-                        focusNode: _focus,
-                        style: AppTextStyle.body(c.textPrimary),
-                        cursorColor: AppTheme.brand,
-                        textInputAction: TextInputAction.search,
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          border: InputBorder.none,
-                          hintText: AppStringKeys.subscriptionsSearchChannels
-                              .l10n(context),
-                          hintStyle: AppTextStyle.body(c.textTertiary),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            child: SettingsSearchField(
+              hintText: AppStringKeys.subscriptionsSearchChannels,
+              controller: _search,
+              focusNode: _focus,
             ),
           ),
           Expanded(child: _body(c)),

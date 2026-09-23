@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mithka/auth/account_store.dart';
+import 'package:mithka/components/app_dialog.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/subscriptions/feed_models.dart';
 import 'package:mithka/subscriptions/rss_fetcher.dart';
+import 'package:mithka/subscriptions/subscription_channel_picker.dart';
 import 'package:mithka/subscriptions/subscription_feed_controller.dart';
 import 'package:mithka/subscriptions/subscription_store.dart';
 import 'package:mithka/subscriptions/subscriptions_view.dart';
@@ -97,6 +101,102 @@ void main() {
     );
     expect(find.text('A short excerpt'), findsWidgets);
     expect(controller.store.isRead(controller.store.allItems().single), isTrue);
+  });
+
+  testWidgets('telegram channel search is editable without a shell material', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final theme = ThemeController(prefs);
+    addTearDown(theme.dispose);
+    final controller = SubscriptionFeedController(
+      store: SubscriptionStore(preferences: prefs, persist: false),
+      rssFetcher: RssFetcher(client: _OfflineClient()),
+      hasClient: () => false,
+      query: (_) async => {'@type': 'ok'},
+    );
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeController>.value(
+        value: theme,
+        child: MaterialApp(
+          locale: const Locale('en'),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData(
+            brightness: Brightness.light,
+            extensions: [AppColors.light],
+          ),
+          home: AddTelegramSubscriptionPage(controller: controller),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Search channels'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'news');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('news'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rss url dialog accepts text on its own material surface', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: ThemeData(
+          brightness: Brightness.light,
+          extensions: [AppColors.light],
+        ),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () {
+                unawaited(
+                  showAppTextEntryDialog(
+                    context,
+                    title: 'Feed URL',
+                    actionLabel: 'Add RSS',
+                    hint: 'https://example.com/feed.xml',
+                    allowEmpty: false,
+                    keyboardType: TextInputType.url,
+                  ),
+                );
+              },
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField),
+      'https://example.com/atom.xml',
+    );
+    await tester.pump();
+    expect(find.text('https://example.com/atom.xml'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
 
