@@ -7,6 +7,8 @@ import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
 import 'package:mithka/chats/local_folder_group.dart';
+import 'package:mithka/components/app_icons.dart';
+import 'package:mithka/components/chat_folder_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -335,6 +337,27 @@ void main() {
       expect(controller.sideFolders.value, isNull);
       expect(find.text('Main chat'), findsOneWidget);
       expect(find.text('Work chat'), findsNothing);
+
+      final workHeader = find.byKey(const ValueKey('chat-list-folder-3'));
+      final workTitle = tester.widget<Text>(
+        find.descendant(of: workHeader, matching: find.text('Work')),
+      );
+      expect(workTitle.style?.fontSize, AppTextSize.chatListTitle());
+      expect(workTitle.style?.fontWeight, FontWeight.w500);
+      expect(
+        find.descendant(of: workHeader, matching: find.byType(ChatFolderIcon)),
+        findsNothing,
+      );
+      final chevron = tester.widget<AppIcon>(
+        find.descendant(of: workHeader, matching: find.byType(AppIcon)),
+      );
+      expect(chevron.size, AppIconSize.xs);
+      expect(
+        tester.getSize(workHeader).height,
+        tester
+            .getSize(find.byKey(const ValueKey('chat-list-folder-chat-all-11')))
+            .height,
+      );
 
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
       await tester.pump();

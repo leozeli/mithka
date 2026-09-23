@@ -2757,7 +2757,6 @@ class _ChatListViewState extends State<ChatListView>
         return _directoryHeader(
           key: ValueKey('chat-list-group-${group.id}'),
           title: group.title,
-          iconName: group.iconName,
           expanded: slot.expanded,
           indent: slot.indent,
           onTap: () => unawaited(_folderGroups.toggleExpanded(group.id)),
@@ -2774,7 +2773,6 @@ class _ChatListViewState extends State<ChatListView>
         return _directoryHeader(
           key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
           title: filter.title.l10n(context),
-          iconName: filter.isAll ? 'All' : filter.iconName,
           expanded: slot.expanded,
           indent: slot.indent,
           onTap: () => _toggleFolderSection(filter),
@@ -2798,7 +2796,11 @@ class _ChatListViewState extends State<ChatListView>
           height: chatListFolderHeaderExtent(context),
           child: Padding(
             padding: EdgeInsetsDirectional.only(
-              start: slot.indent + AppSpacing.xxl,
+              start:
+                  slot.indent +
+                  AppSpacing.xl +
+                  AppMetric.chatListAvatarSize() +
+                  AppSpacing.lg,
             ),
             child: Align(
               alignment: AlignmentDirectional.centerStart,
@@ -2807,7 +2809,8 @@ class _ChatListViewState extends State<ChatListView>
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: AppTextSize.footnote,
+                  fontSize: AppTextSize.chatListPreview(),
+                  fontWeight: FontWeight.w400,
                   color: colors.textTertiary,
                 ),
               ),
@@ -2861,7 +2864,6 @@ class _ChatListViewState extends State<ChatListView>
   Widget _directoryHeader({
     required Key key,
     required String title,
-    required String iconName,
     required bool expanded,
     required double indent,
     required VoidCallback onTap,
@@ -2875,7 +2877,6 @@ class _ChatListViewState extends State<ChatListView>
         child: ChatListFolderHeader(
           key: key,
           title: title,
-          iconName: iconName,
           expanded: expanded,
           onTap: onTap,
           onSecondaryTap: desktop ? null : onSecondaryTap,

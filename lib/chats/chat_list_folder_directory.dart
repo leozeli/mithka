@@ -11,23 +11,16 @@ import 'package:flutter/material.dart';
 
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
-import '../components/chat_folder_icons.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'local_folder_group.dart';
 
-/// Nominal height of a folder section header before text scaling.
-const chatListFolderHeaderBaseExtent = 40.0;
-
 /// Extra inset for chats nested under a Telegram folder section.
 const chatListFolderChildIndent = 16.0;
 
+/// Section headers share the chat row's height so the list keeps one rhythm.
 double chatListFolderHeaderExtent(BuildContext context) =>
-    AppMetric.rowExtentFor(
-      context,
-      base: chatListFolderHeaderBaseExtent,
-      lines: const [AppTextSize.callout],
-    );
+    AppMetric.chatListRowExtent(context);
 
 enum ChatListDirectorySlotKind {
   pullDownArchive,
@@ -306,19 +299,21 @@ double chatListDirectoryScrollOffset({
   return offset;
 }
 
-/// One expandable Telegram folder, or the main "All" section, inside the list.
+/// One expandable local group, Telegram folder, or the main "All" section.
+///
+/// The row uses the chat list's height, horizontal padding, and title style.
+/// A small tertiary chevron sits in the avatar column; the title then starts
+/// where a chat name starts. No separate fill, rule, or folder glyph.
 class ChatListFolderHeader extends StatelessWidget {
   const ChatListFolderHeader({
     super.key,
     required this.title,
-    required this.iconName,
     required this.expanded,
     required this.onTap,
     this.onSecondaryTap,
   });
 
   final String title;
-  final String iconName;
   final bool expanded;
   final VoidCallback onTap;
   final VoidCallback? onSecondaryTap;
@@ -326,7 +321,6 @@ class ChatListFolderHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
-    final height = chatListFolderHeaderExtent(context);
     final collapsedTurns = Directionality.of(context) == TextDirection.rtl
         ? 0.25
         : -0.25;
@@ -335,41 +329,42 @@ class ChatListFolderHeader extends StatelessWidget {
       expanded: expanded,
       onTap: onTap,
       onSecondaryTap: onSecondaryTap,
-      child: Container(
-        height: height,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
-        decoration: BoxDecoration(
-          color: colors.groupedBackground,
-          border: Border(bottom: BorderSide(color: colors.divider, width: 0.5)),
-        ),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0 : collapsedTurns,
-              duration: AppMotion.duration(context, AppMotion.quick),
-              curve: AppMotion.standard,
-              child: AppIcon(
-                HeroAppIcons.chevronDown,
-                size: 16,
-                color: colors.textSecondary,
-              ),
-            ),
-            const SizedBox(width: AppSpacing.md),
-            ChatFolderIcon(iconName, size: 18, color: colors.textSecondary),
-            const SizedBox(width: AppSpacing.md),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: AppTextSize.callout,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
+      child: SizedBox(
+        height: chatListFolderHeaderExtent(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+          child: Row(
+            children: [
+              SizedBox(
+                width: AppMetric.chatListAvatarSize(),
+                child: Center(
+                  child: AnimatedRotation(
+                    turns: expanded ? 0 : collapsedTurns,
+                    duration: AppMotion.duration(context, AppMotion.quick),
+                    curve: AppMotion.standard,
+                    child: AppIcon(
+                      HeroAppIcons.chevronDown,
+                      size: AppIconSize.xs,
+                      color: colors.textTertiary,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(width: AppSpacing.lg),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: AppTextSize.chatListTitle(),
+                    fontWeight: FontWeight.w500,
+                    color: colors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
