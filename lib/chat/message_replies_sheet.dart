@@ -6,11 +6,13 @@ import 'package:mithka/l10n/app_localizations.dart';
 
 import '../components/app_icons.dart';
 import '../components/toast.dart';
+import '../platform/clipboard_image.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import 'chat_image_clipboard.dart';
 import 'emoji_catalog.dart';
 import 'image_preview.dart';
 import 'message_action_menu.dart';
@@ -1019,12 +1021,21 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
                 label: AppStringKeys.chatInputBarReply.l10n(menuContext),
                 action: _ReplySheetAction.reply,
               ),
-            if (message.text.trim().isNotEmpty)
+            if (messageHasUserCopyableText(message))
               _messageMenuRow(
                 menuContext,
                 icon: HeroAppIcons.file,
                 label: AppStringKeys.messageActionCopy.l10n(menuContext),
                 action: _ReplySheetAction.copy,
+              ),
+            if (message.isPhoto &&
+                message.image != null &&
+                clipboardImageCopyIsSupported(Theme.of(menuContext).platform))
+              _messageMenuRow(
+                menuContext,
+                icon: HeroAppIcons.clipboard,
+                label: AppStringKeys.messageActionCopyImage.l10n(menuContext),
+                action: _ReplySheetAction.copyImage,
               ),
           ],
         ),
@@ -1036,6 +1047,10 @@ class _MessageRepliesSheetState extends State<_MessageRepliesSheet> {
         _beginReply(message);
       case _ReplySheetAction.copy:
         await Clipboard.setData(ClipboardData(text: message.text));
+      case _ReplySheetAction.copyImage:
+        final result = await copyChatPhotoToClipboard(message);
+        if (!mounted) return;
+        showToast(context, clipboardImageCopyFeedbackKey(result));
     }
   }
 
@@ -1221,7 +1236,7 @@ class MessageReplySheetItem extends StatelessWidget {
   }
 }
 
-enum _ReplySheetAction { reply, copy }
+enum _ReplySheetAction { reply, copy, copyImage }
 
 class _ReplySender {
   const _ReplySender({required this.name, this.photo});

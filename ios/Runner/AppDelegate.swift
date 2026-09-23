@@ -249,6 +249,39 @@ import UserNotifications
         }
         return
       }
+      if call.method == "writeImage" {
+        guard
+          let arguments = call.arguments as? [String: Any],
+          let data = arguments["data"] as? FlutterStandardTypedData,
+          !data.data.isEmpty
+        else {
+          result(false)
+          return
+        }
+        let mimeType = (arguments["mimeType"] as? String)?.lowercased() ?? "image/png"
+        let type: String
+        switch mimeType {
+        case "image/jpeg", "image/jpg":
+          type = "public.jpeg"
+        case "image/gif":
+          type = "com.compuserve.gif"
+        case "image/png":
+          type = "public.png"
+        default:
+          type = "public.png"
+        }
+        var item: [String: Any] = [type: data.data]
+        if type != "public.png",
+          let image = UIImage(data: data.data),
+          let png = image.pngData(),
+          !png.isEmpty
+        {
+          item["public.png"] = png
+        }
+        UIPasteboard.general.items = [item]
+        result(true)
+        return
+      }
       guard call.method == "readImage" else {
         result(FlutterMethodNotImplemented)
         return

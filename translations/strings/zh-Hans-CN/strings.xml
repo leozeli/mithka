@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">你无法在此聊天中发送消息</string>
     <string name="chatConnectedBusinessBot">已连接的商务机器人</string>
     <string name="chatContactCallsOnly">仅支持与联系人通话</string>
+    <string name="chatCopyImageFailed">无法复制图片。</string>
+    <string name="chatCopyImageNotReady">图片尚未下载。</string>
+    <string name="chatCopyingImage">正在复制图片…</string>
     <string name="chatDelete">删除</string>
     <string name="chatDeleteActionsDone">操作已完成</string>
     <string name="chatDeleteActionsFailed">操作失败：{value1}</string>
@@ -1850,6 +1853,7 @@
     <string name="messageActionBlock">屏蔽</string>
     <string name="messageActionBlockKeyword">屏蔽词</string>
     <string name="messageActionCopy">复制</string>
+    <string name="messageActionCopyImage">复制图片</string>
     <string name="messageActionDisplayOriginal">显示原文</string>
     <string name="messageActionDisplayTranslation">显示译文</string>
     <string name="messageActionEdit">编辑</string>

@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">You can’t send messages in this chat</string>
     <string name="chatConnectedBusinessBot">Connected Business Bot</string>
     <string name="chatContactCallsOnly">Calls are only supported with contacts</string>
+    <string name="chatCopyImageFailed">Couldn’t copy the image.</string>
+    <string name="chatCopyImageNotReady">The image isn’t downloaded yet.</string>
+    <string name="chatCopyingImage">Copying image…</string>
     <string name="chatDelete">Delete</string>
     <string name="chatDeleteActionsDone">Done</string>
     <string name="chatDeleteActionsFailed">Could not apply action: {value1}</string>
@@ -1854,6 +1857,7 @@
     <string name="messageActionBlock">Block</string>
     <string name="messageActionBlockKeyword">Block keyword</string>
     <string name="messageActionCopy">Copy</string>
+    <string name="messageActionCopyImage">Copy image</string>
     <string name="messageActionDisplayOriginal">Display original</string>
     <string name="messageActionDisplayTranslation">Display translation</string>
     <string name="messageActionEdit">Edit</string>
