@@ -813,6 +813,14 @@
     <string name="chatFirstContactOfficial">官方账号</string>
     <string name="chatFirstContactPhoneCountry">手机号归属地</string>
     <string name="chatFirstContactRegistration">注册时间</string>
+    <string name="chatFolderGroupAddTo">添加到“{value1}”</string>
+    <string name="chatFolderGroupCreate">新建本地分组</string>
+    <string name="chatFolderGroupCreateWithFolder">用此文件夹新建本地分组</string>
+    <string name="chatFolderGroupDelete">删除本地分组</string>
+    <string name="chatFolderGroupDeleteConfirm">删除本地分组“{value1}”？文件夹仍保留在 Telegram。</string>
+    <string name="chatFolderGroupNameHint">分组名称</string>
+    <string name="chatFolderGroupRemoveFolder">从本地分组移除</string>
+    <string name="chatFolderGroupRename">重命名本地分组</string>
     <string name="chatFolderManagementAddChat">添加聊天</string>
     <string name="chatFolderManagementAddExcludedChat">添加排除的聊天</string>
     <string name="chatFolderManagementAddIncludedChat">添加包含的聊天</string>
