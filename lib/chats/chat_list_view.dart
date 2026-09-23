@@ -32,6 +32,7 @@ import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/app_press_ripple.dart';
@@ -65,6 +66,8 @@ import 'chat_list_view_model.dart';
 import 'chat_removal_actions.dart';
 import 'chat_row_view.dart';
 import 'filtered_chats_view.dart';
+import 'local_folder_group.dart';
+import 'local_folder_group_store.dart';
 import 'qr_scanner_view.dart';
 import 'search_view.dart';
 
@@ -1037,7 +1040,11 @@ class _ChatListViewState extends State<ChatListView>
   final ValueNotifier<bool> _showScrollToTop = ValueNotifier(false);
 
   /// Expanded section ids. Null is the main "All" list, which starts open.
+  /// Local-group expansion is persisted on [_folderGroups] instead.
   final Set<int?> _expandedFolderIds = {null};
+  final LocalFolderGroupStore _folderGroups = LocalFolderGroupStore();
+  int _folderGroupBindGeneration = 0;
+  List<ChatFilterOption>? _lastPrunedFilters;
 
   /// Tabs mode draws Telegram folders inside the message list, so the outer
   /// rail and tab strip stay unpublished.
@@ -1072,6 +1079,8 @@ class _ChatListViewState extends State<ChatListView>
     _model.prepareLocalPinAccount(context.read<AccountStore?>()?.activeUserId);
     _model.onAppear();
     _model.addListener(_onModel);
+    _folderGroups.addListener(_onFolderGroupsChanged);
+    unawaited(_bindFolderGroups(context.read<AccountStore?>()?.activeUserId));
     widget.controller?.addListener(_onControllerRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _onControllerRequest();
@@ -1088,6 +1097,7 @@ class _ChatListViewState extends State<ChatListView>
     _activeSlotSub = TdClient.shared.subscribeActiveSlotChanges().listen((_) {
       _setConnectionStatus(ChatListConnectionStatus.connecting);
       unawaited(_refreshConnectionStatus());
+      unawaited(_loadMe());
     });
     unawaited(_refreshConnectionStatus());
   }
@@ -1131,6 +1141,7 @@ class _ChatListViewState extends State<ChatListView>
       _model.clearNotice();
       showToast(context, text);
     }
+    unawaited(_pruneFolderGroupsIfNeeded());
     setState(() {});
     if (_pendingScrollToFirstUnreadRequest != null) {
       _tryScrollToFirstUnread();
@@ -1221,6 +1232,8 @@ class _ChatListViewState extends State<ChatListView>
   @override
   void dispose() {
     widget.controller?.clearSideFolders(this);
+    _folderGroups.removeListener(_onFolderGroupsChanged);
+    _folderGroups.dispose();
     _dismissDesktopChatMenu();
     _dismissDesktopPlusMenu();
     _userSub?.cancel();
@@ -1252,8 +1265,40 @@ class _ChatListViewState extends State<ChatListView>
           _meId = me.int64('id');
           _model.meId = _meId;
         });
+        unawaited(_bindFolderGroups(_meId));
       }
     } catch (_) {}
+  }
+
+  void _onFolderGroupsChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _bindFolderGroups(int? userId) async {
+    final generation = ++_folderGroupBindGeneration;
+    final changed = await _folderGroups.bind(
+      slot: TdClient.shared.activeSlot,
+      userId: userId ?? _meId,
+    );
+    if (!mounted || generation != _folderGroupBindGeneration) return;
+    if (changed) {
+      _lastPrunedFilters = null;
+      unawaited(_pruneFolderGroupsIfNeeded());
+      setState(() {});
+    }
+  }
+
+  Future<void> _pruneFolderGroupsIfNeeded() async {
+    if (!_model.chatFoldersLoaded) return;
+    final filters = _model.filters;
+    if (identical(filters, _lastPrunedFilters)) return;
+    _lastPrunedFilters = filters;
+    final existing = <int>{
+      for (final filter in filters)
+        if (filter.folderId != null) filter.folderId!,
+    };
+    await _folderGroups.pruneMissing(existing);
   }
 
   void _applyConnectionUpdate(Map<String, dynamic> update) {
@@ -1954,7 +1999,10 @@ class _ChatListViewState extends State<ChatListView>
             _expandedFolderIds.add(previousFolderId);
           }
         });
-        if (previousFolderId != null) _model.prefetchFolder(previousFolderId);
+        if (previousFolderId != null) {
+          _model.prefetchFolder(previousFolderId);
+          unawaited(_folderGroups.expandGroupContaining(previousFolderId));
+        }
         _model.selectAllFilter();
       });
     }
@@ -2600,9 +2648,7 @@ class _ChatListViewState extends State<ChatListView>
             for (final filter in _model.filters)
               if (!filter.isAll && filter.folderId != null) filter,
           ];
-          final expandedFolderIds = {
-            for (final id in _expandedFolderIds) ?id,
-          };
+          final expandedFolderIds = {for (final id in _expandedFolderIds) ?id};
           final folderEntries = <int, List<CommunityChatListEntry>>{};
           final folderEntryCounts = <int, int>{};
           final loadingFolderIds = <int>{};
@@ -2649,6 +2695,7 @@ class _ChatListViewState extends State<ChatListView>
             showInlineArchive: showInlineArchive,
             inlineArchiveIndex: inlineArchiveIndex,
             allPlaceholderCount: visibleRows,
+            groups: _folderGroups.groups,
           );
           _directorySlots = slots;
           _directoryLeadingExtent = leadingControlsExtent;
@@ -2704,6 +2751,18 @@ class _ChatListViewState extends State<ChatListView>
           rowHeight: rowHeight + 0.5,
           visible: showPulledDownArchive,
         );
+      case ChatListDirectorySlotKind.groupHeader:
+        final group = _folderGroups.groupFor(slot.groupId ?? '');
+        if (group == null) return const SizedBox.shrink();
+        return _directoryHeader(
+          key: ValueKey('chat-list-group-${group.id}'),
+          title: group.title,
+          iconName: group.iconName,
+          expanded: slot.expanded,
+          indent: slot.indent,
+          onTap: () => unawaited(_folderGroups.toggleExpanded(group.id)),
+          actions: _localGroupActions(group),
+        );
       case ChatListDirectorySlotKind.folderHeader:
         final filter = slot.folderId == null
             ? _model.filters.firstWhere(
@@ -2712,15 +2771,19 @@ class _ChatListViewState extends State<ChatListView>
               )
             : filtersById[slot.folderId];
         if (filter == null) return const SizedBox.shrink();
-        return ChatListFolderHeader(
+        return _directoryHeader(
           key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
           title: filter.title.l10n(context),
           iconName: filter.isAll ? 'All' : filter.iconName,
           expanded: slot.expanded,
+          indent: slot.indent,
           onTap: () => _toggleFolderSection(filter),
           onSecondaryTap: filter.isAll
               ? null
-              : () => _editFolderAppearance(filter),
+              : () => unawaited(_editFolderAppearance(filter)),
+          actions: filter.isAll
+              ? _allSectionActions()
+              : _folderSectionActions(filter),
         );
       case ChatListDirectorySlotKind.filtered:
         return _filteredChatsRow();
@@ -2734,8 +2797,8 @@ class _ChatListViewState extends State<ChatListView>
         return SizedBox(
           height: chatListFolderHeaderExtent(context),
           child: Padding(
-            padding: const EdgeInsetsDirectional.only(
-              start: chatListFolderChildIndent + AppSpacing.xxl,
+            padding: EdgeInsetsDirectional.only(
+              start: slot.indent + AppSpacing.xxl,
             ),
             child: Align(
               alignment: AlignmentDirectional.centerStart,
@@ -2752,7 +2815,7 @@ class _ChatListViewState extends State<ChatListView>
           ),
         );
       case ChatListDirectorySlotKind.placeholder:
-        return const _ChatRowPlaceholder();
+        return _directoryIndent(const _ChatRowPlaceholder(), slot.indent);
       case ChatListDirectorySlotKind.entry:
         final entries = slot.folderId == null
             ? allEntries
@@ -2783,14 +2846,165 @@ class _ChatListViewState extends State<ChatListView>
             child: _communityRow(entry),
           ),
         };
-        if (slot.folderId == null) return child;
-        return Padding(
-          padding: const EdgeInsetsDirectional.only(
-            start: chatListFolderChildIndent,
-          ),
-          child: child,
-        );
+        return _directoryIndent(child, slot.indent);
     }
+  }
+
+  Widget _directoryIndent(Widget child, double indent) {
+    if (indent <= 0) return child;
+    return Padding(
+      padding: EdgeInsetsDirectional.only(start: indent),
+      child: child,
+    );
+  }
+
+  Widget _directoryHeader({
+    required Key key,
+    required String title,
+    required String iconName,
+    required bool expanded,
+    required double indent,
+    required VoidCallback onTap,
+    required List<DesktopRowAction> actions,
+    VoidCallback? onSecondaryTap,
+  }) {
+    final desktop = !kIsWeb && isDesktopTargetPlatform();
+    return _directoryIndent(
+      DesktopRowActionRegion(
+        actions: actions,
+        child: ChatListFolderHeader(
+          key: key,
+          title: title,
+          iconName: iconName,
+          expanded: expanded,
+          onTap: onTap,
+          onSecondaryTap: desktop ? null : onSecondaryTap,
+        ),
+      ),
+      indent,
+    );
+  }
+
+  List<DesktopRowAction> _allSectionActions() {
+    return [
+      DesktopRowAction(
+        id: 'create-local-folder-group',
+        label: AppStringKeys.chatFolderGroupCreate,
+        icon: HeroAppIcons.folder,
+        onInvoke: () => unawaited(_createLocalFolderGroup()),
+      ),
+    ];
+  }
+
+  List<DesktopRowAction> _folderSectionActions(ChatFilterOption filter) {
+    final actions = <DesktopRowAction>[
+      DesktopRowAction(
+        id: 'edit-folder',
+        label: AppStringKeys.chatFolderManagementEditFolder,
+        icon: HeroAppIcons.pen,
+        onInvoke: () => unawaited(_editFolderAppearance(filter)),
+      ),
+    ];
+    final folderId = filter.folderId;
+    if (folderId == null) return actions;
+    final current = _folderGroups.groupContaining(folderId);
+    if (current != null) {
+      actions.add(
+        DesktopRowAction(
+          id: 'remove-from-local-folder-group',
+          label: AppStringKeys.chatFolderGroupRemoveFolder,
+          icon: HeroAppIcons.ban,
+          onInvoke: () => unawaited(_folderGroups.removeFolder(folderId)),
+        ),
+      );
+    }
+    for (final group in _folderGroups.groups) {
+      if (current?.id == group.id) continue;
+      actions.add(
+        DesktopRowAction(
+          id: 'add-to-local-folder-group-${group.id}',
+          label: AppStrings.t(AppStringKeys.chatFolderGroupAddTo, {
+            'value1': group.title,
+          }),
+          icon: HeroAppIcons.folder,
+          onInvoke: () =>
+              unawaited(_folderGroups.addFolder(group.id, folderId)),
+        ),
+      );
+    }
+    actions.add(
+      DesktopRowAction(
+        id: 'create-local-folder-group-with-folder',
+        label: AppStringKeys.chatFolderGroupCreateWithFolder,
+        icon: HeroAppIcons.plus,
+        onInvoke: () =>
+            unawaited(_createLocalFolderGroup(seedFolderIds: [folderId])),
+      ),
+    );
+    return actions;
+  }
+
+  List<DesktopRowAction> _localGroupActions(LocalFolderGroup group) {
+    return [
+      DesktopRowAction(
+        id: 'rename-local-folder-group',
+        label: AppStringKeys.chatFolderGroupRename,
+        icon: HeroAppIcons.pen,
+        onInvoke: () => unawaited(_renameLocalFolderGroup(group)),
+      ),
+      DesktopRowAction(
+        id: 'delete-local-folder-group',
+        label: AppStringKeys.chatFolderGroupDelete,
+        icon: HeroAppIcons.trash,
+        color: AppTheme.tagRed,
+        onInvoke: () => unawaited(_deleteLocalFolderGroup(group)),
+      ),
+    ];
+  }
+
+  Future<void> _createLocalFolderGroup({
+    List<int> seedFolderIds = const <int>[],
+  }) async {
+    final title = await Navigator.of(context, rootNavigator: true).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const EditFieldView(
+          title: AppStringKeys.chatFolderGroupCreate,
+          initial: '',
+          hint: AppStringKeys.chatFolderGroupNameHint,
+          maxLength: 24,
+        ),
+      ),
+    );
+    if (title == null || title.trim().isEmpty || !mounted) return;
+    await _folderGroups.create(title: title, childFolderIds: seedFolderIds);
+  }
+
+  Future<void> _renameLocalFolderGroup(LocalFolderGroup group) async {
+    final title = await Navigator.of(context, rootNavigator: true).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditFieldView(
+          title: AppStringKeys.chatFolderGroupRename,
+          initial: group.title,
+          hint: AppStringKeys.chatFolderGroupNameHint,
+          maxLength: 24,
+        ),
+      ),
+    );
+    if (title == null || title.trim().isEmpty || !mounted) return;
+    await _folderGroups.rename(group.id, title);
+  }
+
+  Future<void> _deleteLocalFolderGroup(LocalFolderGroup group) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.chatFolderGroupDeleteConfirm, {
+        'value1': group.title,
+      }),
+      confirmText: AppStringKeys.chatFolderGroupDelete,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await _folderGroups.delete(group.id);
   }
 
   Widget _chatList() {

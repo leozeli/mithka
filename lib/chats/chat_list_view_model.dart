@@ -78,6 +78,7 @@ class ChatListViewModel extends ChangeNotifier {
   );
   String? notice;
   bool _initialLoading = true;
+  bool _chatFoldersLoaded = false;
   Timer? _resortTimer;
   int _pendingResortSignals = 0;
 
@@ -161,6 +162,11 @@ class ChatListViewModel extends ChangeNotifier {
   );
 
   List<ChatFilterOption> get filters => _filters;
+
+  /// True after Telegram's folder list has replaced the placeholder "All" row.
+  /// Local groups wait for this before dropping folder ids, so a group is not
+  /// emptied while the first folder snapshot is still in flight.
+  bool get chatFoldersLoaded => _chatFoldersLoaded;
   ChatFilterOption get selectedFilter => _selectedFilter;
   bool get isAllFilter => _selectedFilter.isAll;
   bool get isInitialLoading => _initialLoading && _chats.isEmpty;
@@ -339,6 +345,7 @@ class ChatListViewModel extends ChangeNotifier {
   }
 
   void _applyChatFolders(Map<String, dynamic> object) {
+    _chatFoldersLoaded = true;
     final raw =
         object.objects('chat_folders') ??
         object.objects('chat_folder_infos') ??

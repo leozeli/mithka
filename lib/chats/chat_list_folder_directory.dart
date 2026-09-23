@@ -1,9 +1,9 @@
 //
 //  chat_list_folder_directory.dart
 //
-//  Telegram folders as expandable sections inside the message list. Membership
-//  stays a flat TDLib chat-list filter; this only changes where those folders
-//  are browsed. The outer rail and tab strip are not required.
+//  Telegram folders as expandable sections inside the message list, optionally
+//  nested under client-only local groups. Membership stays a flat TDLib
+//  chat-list filter. The outer rail and tab strip are not required.
 
 import 'dart:math' as math;
 
@@ -14,6 +14,7 @@ import '../components/app_interactive_surface.dart';
 import '../components/chat_folder_icons.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
+import 'local_folder_group.dart';
 
 /// Nominal height of a folder section header before text scaling.
 const chatListFolderHeaderBaseExtent = 40.0;
@@ -30,6 +31,7 @@ double chatListFolderHeaderExtent(BuildContext context) =>
 
 enum ChatListDirectorySlotKind {
   pullDownArchive,
+  groupHeader,
   folderHeader,
   filtered,
   archive,
@@ -42,20 +44,28 @@ class ChatListDirectorySlot {
   const ChatListDirectorySlot({
     required this.kind,
     this.folderId,
+    this.groupId,
     this.expanded = false,
     this.entryIndex,
     this.lastInSection = false,
+    this.indent = 0,
   });
 
   final ChatListDirectorySlotKind kind;
 
   /// Null is the main list ("All"). A non-null id is a Telegram folder.
   final int? folderId;
+
+  /// Set on a local-group header. Telegram never assigns this id.
+  final String? groupId;
   final bool expanded;
   final int? entryIndex;
 
   /// The last chat row of an expanded Telegram folder, used to page that list.
   final bool lastInSection;
+
+  /// Leading inset. A grouped folder is one step in; its chats are two.
+  final double indent;
 }
 
 double chatListDirectorySlotExtent(
@@ -67,6 +77,7 @@ double chatListDirectorySlotExtent(
   return switch (kind) {
     ChatListDirectorySlotKind.pullDownArchive =>
       pullDownVisible ? rowHeight : 0,
+    ChatListDirectorySlotKind.groupHeader ||
     ChatListDirectorySlotKind.folderHeader ||
     ChatListDirectorySlotKind.empty => headerHeight,
     ChatListDirectorySlotKind.filtered ||
@@ -76,8 +87,10 @@ double chatListDirectorySlotExtent(
   };
 }
 
-/// Folders sit above the main list so they stay reachable without scrolling
-/// through every chat. "All" is the last section and starts expanded.
+/// Local groups, then ungrouped Telegram folders, then "All". Groups and
+/// folders sit above the main list so they stay reachable without scrolling
+/// through every chat. "All" starts expanded. A folder belongs to at most one
+/// group; collapsing a group hides that group's folders and their chats.
 List<ChatListDirectorySlot> buildChatListFolderDirectory({
   required List<int> folderIds,
   required Set<int> expandedFolderIds,
@@ -91,6 +104,7 @@ List<ChatListDirectorySlot> buildChatListFolderDirectory({
   required bool showInlineArchive,
   required int inlineArchiveIndex,
   required int allPlaceholderCount,
+  List<LocalFolderGroup> groups = const [],
 }) {
   final slots = <ChatListDirectorySlot>[];
   if (hasPullDownArchiveSlot) {
@@ -100,26 +114,38 @@ List<ChatListDirectorySlot> buildChatListFolderDirectory({
       ),
     );
   }
-  for (final id in folderIds) {
-    final expanded = expandedFolderIds.contains(id);
+  final folderIdSet = folderIds.toSet();
+  final placed = <int>{};
+  for (final group in groups) {
     slots.add(
       ChatListDirectorySlot(
-        kind: ChatListDirectorySlotKind.folderHeader,
-        folderId: id,
-        expanded: expanded,
+        kind: ChatListDirectorySlotKind.groupHeader,
+        groupId: group.id,
+        expanded: group.expanded,
       ),
     );
-    if (!expanded) continue;
-    _appendSectionBody(
+    for (final id in group.childFolderIds) {
+      if (!folderIdSet.contains(id) || !placed.add(id)) continue;
+      if (!group.expanded) continue;
+      _appendFolderSection(
+        slots,
+        folderId: id,
+        expanded: expandedFolderIds.contains(id),
+        headerIndent: chatListFolderChildIndent,
+        entryCount: folderEntryCounts[id] ?? 0,
+        loading: loadingFolderIds.contains(id),
+      );
+    }
+  }
+  for (final id in folderIds) {
+    if (placed.contains(id)) continue;
+    _appendFolderSection(
       slots,
       folderId: id,
+      expanded: expandedFolderIds.contains(id),
+      headerIndent: 0,
       entryCount: folderEntryCounts[id] ?? 0,
       loading: loadingFolderIds.contains(id),
-      placeholderCount: 3,
-      hasFiltered: false,
-      showInlineArchive: false,
-      inlineArchiveIndex: -1,
-      pageWhenLastEntryVisible: true,
     );
   }
   slots.add(
@@ -144,6 +170,37 @@ List<ChatListDirectorySlot> buildChatListFolderDirectory({
   return slots;
 }
 
+void _appendFolderSection(
+  List<ChatListDirectorySlot> slots, {
+  required int folderId,
+  required bool expanded,
+  required double headerIndent,
+  required int entryCount,
+  required bool loading,
+}) {
+  slots.add(
+    ChatListDirectorySlot(
+      kind: ChatListDirectorySlotKind.folderHeader,
+      folderId: folderId,
+      expanded: expanded,
+      indent: headerIndent,
+    ),
+  );
+  if (!expanded) return;
+  _appendSectionBody(
+    slots,
+    folderId: folderId,
+    entryCount: entryCount,
+    loading: loading,
+    placeholderCount: 3,
+    hasFiltered: false,
+    showInlineArchive: false,
+    inlineArchiveIndex: -1,
+    pageWhenLastEntryVisible: true,
+    indent: headerIndent + chatListFolderChildIndent,
+  );
+}
+
 void _appendSectionBody(
   List<ChatListDirectorySlot> slots, {
   required int? folderId,
@@ -154,12 +211,14 @@ void _appendSectionBody(
   required bool showInlineArchive,
   required int inlineArchiveIndex,
   required bool pageWhenLastEntryVisible,
+  double indent = 0,
 }) {
   if (hasFiltered) {
     slots.add(
       ChatListDirectorySlot(
         kind: ChatListDirectorySlotKind.filtered,
         folderId: folderId,
+        indent: indent,
       ),
     );
   }
@@ -170,6 +229,7 @@ void _appendSectionBody(
           ChatListDirectorySlot(
             kind: ChatListDirectorySlotKind.placeholder,
             folderId: folderId,
+            indent: indent,
           ),
         );
       }
@@ -178,6 +238,7 @@ void _appendSectionBody(
         ChatListDirectorySlot(
           kind: ChatListDirectorySlotKind.empty,
           folderId: folderId,
+          indent: indent,
         ),
       );
     }
@@ -190,6 +251,7 @@ void _appendSectionBody(
         ChatListDirectorySlot(
           kind: ChatListDirectorySlotKind.archive,
           folderId: folderId,
+          indent: indent,
         ),
       );
     }
@@ -200,6 +262,7 @@ void _appendSectionBody(
         kind: ChatListDirectorySlotKind.entry,
         folderId: folderId,
         entryIndex: i,
+        indent: indent,
         lastInSection:
             pageWhenLastEntryVisible && i == entryCount - 1 && !archiveFollows,
       ),
@@ -210,6 +273,7 @@ void _appendSectionBody(
       ChatListDirectorySlot(
         kind: ChatListDirectorySlotKind.archive,
         folderId: folderId,
+        indent: indent,
       ),
     );
   }

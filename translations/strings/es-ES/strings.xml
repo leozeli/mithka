@@ -816,6 +816,14 @@
     <string name="chatFirstContactOfficial">Cuenta oficial</string>
     <string name="chatFirstContactPhoneCountry">Número de teléfono</string>
     <string name="chatFirstContactRegistration">Registro</string>
+    <string name="chatFolderGroupAddTo">Añadir a “{value1}”</string>
+    <string name="chatFolderGroupCreate">Nuevo grupo local</string>
+    <string name="chatFolderGroupCreateWithFolder">Nuevo grupo local con carpeta</string>
+    <string name="chatFolderGroupDelete">Eliminar grupo local</string>
+    <string name="chatFolderGroupDeleteConfirm">¿Eliminar el grupo local “{value1}”? Las carpetas siguen en Telegram.</string>
+    <string name="chatFolderGroupNameHint">Nombre del grupo</string>
+    <string name="chatFolderGroupRemoveFolder">Quitar del grupo local</string>
+    <string name="chatFolderGroupRename">Renombrar grupo local</string>
     <string name="chatFolderManagementAddChat">Añadir chat</string>
     <string name="chatFolderManagementAddExcludedChat">Añadir chat excluido</string>
     <string name="chatFolderManagementAddIncludedChat">Añadir chat incluido</string>

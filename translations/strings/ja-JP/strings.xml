@@ -816,6 +816,14 @@
     <string name="chatFirstContactOfficial">公式アカウント</string>
     <string name="chatFirstContactPhoneCountry">電話番号</string>
     <string name="chatFirstContactRegistration">登録時期</string>
+    <string name="chatFolderGroupAddTo">「{value1}」に追加</string>
+    <string name="chatFolderGroupCreate">ローカルグループを作成</string>
+    <string name="chatFolderGroupCreateWithFolder">このフォルダでローカルグループを作成</string>
+    <string name="chatFolderGroupDelete">ローカルグループを削除</string>
+    <string name="chatFolderGroupDeleteConfirm">ローカルグループ「{value1}」を削除しますか？フォルダはTelegramに残ります。</string>
+    <string name="chatFolderGroupNameHint">グループ名</string>
+    <string name="chatFolderGroupRemoveFolder">ローカルグループから削除</string>
+    <string name="chatFolderGroupRename">ローカルグループの名前を変更</string>
     <string name="chatFolderManagementAddChat">チャットを追加</string>
     <string name="chatFolderManagementAddExcludedChat">除外するチャットを追加</string>
     <string name="chatFolderManagementAddIncludedChat">含めるチャットを追加</string>

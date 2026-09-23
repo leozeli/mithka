@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
+import 'package:mithka/chats/local_folder_group.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_client.dart';
 import 'package:mithka/tdlib/td_models.dart';
@@ -92,6 +94,72 @@ void main() {
     },
   );
 
+  test('local groups nest folders and hide them when collapsed', () {
+    const group = LocalFolderGroup(
+      id: 'g1',
+      title: 'Focus',
+      childFolderIds: [7],
+    );
+    final open = buildChatListFolderDirectory(
+      folderIds: const [7, 8],
+      expandedFolderIds: const {7},
+      allExpanded: true,
+      folderEntryCounts: const {7: 1, 8: 0},
+      loadingFolderIds: const {},
+      allEntryCount: 1,
+      allLoading: false,
+      hasPullDownArchiveSlot: false,
+      hasFiltered: false,
+      showInlineArchive: false,
+      inlineArchiveIndex: -1,
+      allPlaceholderCount: 0,
+      groups: const [group],
+    );
+    expect(
+      open.map((slot) => (slot.kind, slot.groupId, slot.folderId, slot.indent)),
+      [
+        (ChatListDirectorySlotKind.groupHeader, 'g1', null, 0),
+        (ChatListDirectorySlotKind.folderHeader, null, 7, 16),
+        (ChatListDirectorySlotKind.entry, null, 7, 32),
+        (ChatListDirectorySlotKind.folderHeader, null, 8, 0),
+        (ChatListDirectorySlotKind.folderHeader, null, null, 0),
+        (ChatListDirectorySlotKind.entry, null, null, 0),
+      ],
+    );
+
+    final closed = buildChatListFolderDirectory(
+      folderIds: const [7, 8],
+      expandedFolderIds: const {7},
+      allExpanded: true,
+      folderEntryCounts: const {7: 1},
+      loadingFolderIds: const {},
+      allEntryCount: 1,
+      allLoading: false,
+      hasPullDownArchiveSlot: false,
+      hasFiltered: false,
+      showInlineArchive: false,
+      inlineArchiveIndex: -1,
+      allPlaceholderCount: 0,
+      groups: const [
+        LocalFolderGroup(
+          id: 'g1',
+          title: 'Focus',
+          childFolderIds: [7],
+          expanded: false,
+        ),
+      ],
+    );
+    expect(closed.where((slot) => slot.folderId == 7), isEmpty);
+    expect(
+      closed.where(
+        (slot) =>
+            slot.kind == ChatListDirectorySlotKind.folderHeader &&
+            slot.folderId == 8,
+      ),
+      hasLength(1),
+    );
+  });
+
   test('scroll offset accounts for folder headers above the main list', () {
     final slots = buildChatListFolderDirectory(
       folderIds: const [1],
@@ -178,7 +246,7 @@ void main() {
   });
 
   testWidgets(
-    'expanding a folder reveals only that folder\'s chats',
+    'folders and local groups expand inside the chat list',
     (tester) async {
       final updates = StreamController<Map<String, dynamic>>.broadcast();
       TdClient.shared.configureProxy(
@@ -222,6 +290,11 @@ void main() {
             'id': 3,
             'title': 'Work',
             'icon': {'name': 'Work'},
+          },
+          {
+            'id': 4,
+            'title': 'Personal',
+            'icon': {'name': 'Home'},
           },
         ],
       });
@@ -279,11 +352,102 @@ void main() {
       expect(find.text('Work chat'), findsNothing);
       expect(find.text('Main chat'), findsOneWidget);
 
+      await _secondaryClick(
+        tester,
+        find.byKey(const ValueKey('chat-list-folder-all')),
+      );
+      await tester.tap(find.text('New local group'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.enterText(find.byType(TextField), 'Focus');
+      await tester.tap(find.text('Save'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Focus'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-4'))).dx,
+      );
+
+      await _secondaryClick(
+        tester,
+        find.byKey(const ValueKey('chat-list-folder-3')),
+      );
+      await tester.tap(find.textContaining('Add to'));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
+        greaterThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-4')))
+              .dx,
+        ),
+      );
+
+      await tester.tap(find.text('Focus'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsNothing);
+      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
+
+      await tester.tap(find.text('Focus'));
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(find.text('Work chat'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Focus')).dy,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-3')))
+              .dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dy,
+        lessThan(tester.getTopLeft(find.text('Work chat')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Work chat')).dy,
+        lessThan(tester.getTopLeft(find.text('Main chat')).dy),
+      );
+
+      await _secondaryClick(
+        tester,
+        find.byKey(const ValueKey('chat-list-folder-3')),
+      );
+      await tester.tap(find.text('Remove from local group'));
+      await tester.pump();
+      expect(
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
+        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-4'))).dx,
+      );
+
+      await _secondaryClick(tester, find.text('Focus'));
+      await tester.tap(find.text('Delete local group'));
+      await tester.pump();
+      await tester.tap(find.text('Delete local group'));
+      await tester.pump();
+      expect(find.text('Focus'), findsNothing);
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsOneWidget);
+      expect(find.byType(ChatFolderRail), findsNothing);
+
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 6));
     },
     variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
+}
+
+Future<void> _secondaryClick(WidgetTester tester, Finder target) async {
+  final gesture = await tester.createGesture(
+    kind: PointerDeviceKind.mouse,
+    buttons: kSecondaryMouseButton,
+  );
+  await gesture.down(tester.getCenter(target));
+  await gesture.up();
+  await tester.pump();
 }
 
 ChatSummary _chat({
