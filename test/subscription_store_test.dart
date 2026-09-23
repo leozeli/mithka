@@ -26,7 +26,7 @@ void main() {
     subscriptionId: 'rss:https://example.com/feed',
     title: 'Post $publishedAt',
     sourceName: 'Example',
-    excerpt: 'Body',
+    summary: 'Body',
     publishedAt: publishedAt,
     link: 'https://example.com/$publishedAt',
   );
@@ -54,7 +54,8 @@ void main() {
           subscriptionId: 'tg:-100123',
           title: 'Hello',
           sourceName: 'News',
-          excerpt: 'There',
+          summary: 'There',
+          body: 'There',
           publishedAt: 50,
           chatId: -100123,
           messageId: 99,
@@ -70,7 +71,24 @@ void main() {
     final loaded = again.itemsFor('tg:-100123').single;
     expect(loaded.messageId, 99);
     expect(loaded.chatId, -100123);
-    expect(loaded.excerpt, 'There');
+    expect(loaded.summary, 'There');
+    expect(loaded.body, 'There');
+  });
+
+  test('legacy excerpt loads as a short summary plus the old body', () {
+    final wall = 'Blurb sentence. ${List.filled(80, 'word').join(' ')}';
+    final item = FeedItem.fromJson({
+      'id': 'rss:https://example.com/feed#1',
+      'subscriptionId': 'rss:https://example.com/feed',
+      'title': 'Old',
+      'excerpt': wall,
+    });
+    expect(item, isNotNull);
+    expect(item!.summary, startsWith('Blurb sentence.'));
+    expect(item.summary.length, lessThanOrEqualTo(feedSummaryMaxChars));
+    expect(item.body, wall);
+    expect(item.articleBody, wall);
+    expect(item.listSummary, item.summary);
   });
 
   test('keeps each Telegram user on their own list', () async {

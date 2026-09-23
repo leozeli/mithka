@@ -521,13 +521,22 @@ class SubscriptionItemPage extends StatelessWidget {
   final FeedItem item;
   final VoidCallback? onBack;
 
+  static const readerMaxWidth = 640.0;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final title = item.title.trim().isEmpty ? item.sourceName : item.title;
+    final body = item.articleBody;
+    final domain = item.siteLabel;
+    final meta = [
+      if (item.sourceName.trim().isNotEmpty) item.sourceName.trim(),
+      if (item.publishedAt > 0) DateText.separatorLabel(item.publishedAt),
+      ?domain,
+    ].join(' · ');
     final canOpen = item.opensInChat || item.hasLink;
     return ColoredBox(
-      color: c.background,
+      color: c.groupedBackground,
       child: Column(
         children: [
           NavHeader(
@@ -536,69 +545,66 @@ class SubscriptionItemPage extends StatelessWidget {
             onBack: onBack ?? () => Navigator.of(context).maybePop(),
           ),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                20,
-                20,
-                20 + MediaQuery.paddingOf(context).bottom,
-              ),
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyle.title(
-                    c.textPrimary,
-                    weight: AppTextWeight.semibold,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final inset = constraints.maxWidth > readerMaxWidth
+                    ? (constraints.maxWidth - readerMaxWidth) / 2
+                    : 0.0;
+                return ListView(
+                  padding: EdgeInsets.fromLTRB(
+                    16 + inset,
+                    16,
+                    16 + inset,
+                    24 + MediaQuery.paddingOf(context).bottom,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  [
-                    item.sourceName,
-                    if (item.publishedAt > 0)
-                      DateText.separatorLabel(item.publishedAt),
-                  ].join(' · '),
-                  style: AppTextStyle.footnote(c.textTertiary),
-                ),
-                if (item.excerpt.trim().isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    item.excerpt,
-                    style: AppTextStyle.body(
-                      c.textPrimary,
-                    ).copyWith(height: 1.4),
-                  ),
-                ],
-                if (canOpen) ...[
-                  const SizedBox(height: 24),
-                  AppInteractiveSurface(
-                    key: const ValueKey('subscriptions-open-original'),
-                    semanticLabel: AppStringKeys.subscriptionsOpenOriginal.l10n(
-                      context,
-                    ),
-                    isButton: true,
-                    borderRadius: BorderRadius.circular(AppRadius.card),
-                    onTap: () => unawaited(_openOriginal(context)),
-                    child: DecoratedBox(
+                  children: [
+                    DecoratedBox(
                       decoration: BoxDecoration(
-                        color: AppTheme.brand,
-                        borderRadius: BorderRadius.circular(AppRadius.card),
+                        color: c.card,
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                        border: Border.all(color: c.divider),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: Text(
-                          AppStringKeys.subscriptionsOpenOriginal.l10n(context),
-                          textAlign: TextAlign.center,
-                          style: AppTextStyle.body(
-                            const Color(0xFFFFFFFF),
-                            weight: AppTextWeight.semibold,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SelectableText(
+                              title,
+                              style: AppTextStyle.title(
+                                c.textPrimary,
+                                weight: AppTextWeight.semibold,
+                              ),
+                            ),
+                            if (meta.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                meta,
+                                style: AppTextStyle.footnote(c.textTertiary),
+                              ),
+                            ],
+                            if (canOpen) ...[
+                              const SizedBox(height: 20),
+                              _OpenOriginalButton(
+                                onTap: () => unawaited(_openOriginal(context)),
+                              ),
+                            ],
+                            if (body.isNotEmpty) ...[
+                              const SizedBox(height: 20),
+                              SelectableText(
+                                body,
+                                style: AppTextStyle.body(
+                                  c.textPrimary,
+                                ).copyWith(height: 1.45),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -1158,20 +1164,21 @@ class _TimelineRow extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (showSource) ...[
+                  if (_rowMeta(item, showSource: showSource)
+                      case final meta?) ...[
                     const SizedBox(height: 2),
                     Text(
-                      item.sourceName,
+                      meta,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyle.footnote(c.textSecondary),
                     ),
                   ],
-                  if (item.excerpt.trim().isNotEmpty) ...[
+                  if (item.listSummary.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
-                      item.excerpt,
-                      maxLines: 3,
+                      item.listSummary,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: AppTextStyle.footnote(
                         c.textSecondary,
@@ -1182,6 +1189,50 @@ class _TimelineRow extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Source name on the mixed timeline, plus the link host for RSS.
+String? _rowMeta(FeedItem item, {required bool showSource}) {
+  final parts = [
+    if (showSource && item.sourceName.trim().isNotEmpty) item.sourceName.trim(),
+    ?item.siteLabel,
+  ];
+  if (parts.isEmpty) return null;
+  return parts.join(' · ');
+}
+
+class _OpenOriginalButton extends StatelessWidget {
+  const _OpenOriginalButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppInteractiveSurface(
+      key: const ValueKey('subscriptions-open-original'),
+      semanticLabel: AppStringKeys.subscriptionsOpenOriginal.l10n(context),
+      isButton: true,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      onTap: onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppTheme.brand,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            AppStringKeys.subscriptionsOpenOriginal.l10n(context),
+            textAlign: TextAlign.center,
+            style: AppTextStyle.body(
+              const Color(0xFFFFFFFF),
+              weight: AppTextWeight.semibold,
+            ),
+          ),
         ),
       ),
     );

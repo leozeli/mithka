@@ -28,7 +28,9 @@ void main() {
     expect(post, isNotNull);
     expect(post!.id, 'tg:-100123:99');
     expect(post.title, 'Preview');
-    expect(post.excerpt, 'Title line\nBody line');
+    expect(post.body, 'Title line\nBody line');
+    expect(post.summary, 'Title line Body line');
+    expect(post.siteLabel, isNull);
     expect(post.link, 'https://example.com/story');
     expect(post.chatId, -100123);
     expect(post.messageId, 99);

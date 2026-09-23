@@ -101,7 +101,8 @@ class FeedItem {
     required this.subscriptionId,
     required this.title,
     required this.sourceName,
-    required this.excerpt,
+    required this.summary,
+    this.body = '',
     required this.publishedAt,
     this.link,
     this.chatId,
@@ -112,7 +113,12 @@ class FeedItem {
   final String subscriptionId;
   final String title;
   final String sourceName;
-  final String excerpt;
+
+  /// Short line for the timeline. Not the article.
+  final String summary;
+
+  /// Detail-page text, with blank lines between paragraphs.
+  final String body;
   final int publishedAt;
   final String? link;
   final int? chatId;
@@ -122,12 +128,40 @@ class FeedItem {
 
   bool get hasLink => link != null && link!.trim().isNotEmpty;
 
+  /// Timeline copy. Falls back to the first paragraph when only [body] is set.
+  String get listSummary {
+    final text = summary.trim();
+    if (text.isNotEmpty) return text;
+    return feedListSummary(body);
+  }
+
+  /// Reader copy. A summary-only item still has something to show.
+  String get articleBody {
+    final text = body.trim();
+    if (text.isNotEmpty) return text;
+    return summary.trim();
+  }
+
+  /// `github.com` for an RSS link. Telegram rows leave this empty.
+  String? get siteLabel {
+    if (opensInChat) return null;
+    final raw = link?.trim();
+    if (raw == null || raw.isEmpty) return null;
+    final host = Uri.tryParse(raw)?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return null;
+    final label = host.startsWith('www.') ? host.substring(4) : host;
+    if (label.isEmpty) return null;
+    if (label == sourceName.trim().toLowerCase()) return null;
+    return label;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'subscriptionId': subscriptionId,
     'title': title,
     'sourceName': sourceName,
-    'excerpt': excerpt,
+    'summary': summary,
+    'body': body,
     'publishedAt': publishedAt,
     if (link != null) 'link': link,
     if (chatId != null) 'chatId': '$chatId',
@@ -143,6 +177,15 @@ class FeedItem {
         subscriptionId.isEmpty) {
       return null;
     }
+    final storedBody = json['body'] is String ? json['body'] as String : '';
+    final storedSummary = json['summary'] is String
+        ? json['summary'] as String
+        : '';
+    final legacy = json['excerpt'] is String ? json['excerpt'] as String : '';
+    final body = storedBody.isNotEmpty ? storedBody : legacy;
+    final summary = storedSummary.trim().isNotEmpty
+        ? storedSummary
+        : feedListSummary(legacy);
     return FeedItem(
       id: id,
       subscriptionId: subscriptionId,
@@ -150,13 +193,65 @@ class FeedItem {
       sourceName: json['sourceName'] is String
           ? json['sourceName'] as String
           : '',
-      excerpt: json['excerpt'] is String ? json['excerpt'] as String : '',
+      summary: summary,
+      body: body,
       publishedAt: _asInt(json['publishedAt']) ?? 0,
       link: json['link'] is String ? json['link'] as String : null,
       chatId: _asInt(json['chatId']),
       messageId: _asInt(json['messageId']),
     );
   }
+}
+
+/// Timeline cards stay short even when the article is a README.
+const int feedSummaryMaxChars = 180;
+
+/// Detail text stays long enough to read and short of a full repository file.
+const int feedBodyMaxChars = 8000;
+
+/// First useful paragraph, clipped to [maxChars] on a word boundary.
+String feedListSummary(String plain, {int maxChars = feedSummaryMaxChars}) {
+  final trimmed = plain.trim();
+  if (trimmed.isEmpty) return '';
+  final paragraphs = trimmed.split(RegExp(r'\n\s*\n'));
+  String? fallback;
+  for (final paragraph in paragraphs) {
+    final line = paragraph.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (line.isEmpty) continue;
+    fallback ??= line;
+    if (_isUsefulSummaryLine(line)) return clipFeedText(line, maxChars);
+  }
+  return clipFeedText(
+    fallback ?? trimmed.replaceAll(RegExp(r'\s+'), ' ').trim(),
+    maxChars,
+  );
+}
+
+String clipFeedText(String text, int maxChars) {
+  final trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  var end = trimmed.lastIndexOf(' ', maxChars);
+  if (end < (maxChars * 0.6).round()) end = maxChars;
+  return trimmed.substring(0, end).trimRight();
+}
+
+String clipFeedBody(String text, {int maxChars = feedBodyMaxChars}) {
+  final trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  var end = trimmed.lastIndexOf('\n\n', maxChars);
+  if (end < (maxChars * 0.5).round()) {
+    end = trimmed.lastIndexOf(' ', maxChars);
+  }
+  if (end < (maxChars * 0.5).round()) end = maxChars;
+  return trimmed.substring(0, end).trimRight();
+}
+
+bool _isUsefulSummaryLine(String line) {
+  final bare = line.replaceFirst(RegExp(r'^[•\-]\s*'), '').trim();
+  if (bare.isEmpty) return false;
+  final uri = Uri.tryParse(bare);
+  if (uri != null && uri.hasScheme && !bare.contains(' ')) return false;
+  return true;
 }
 
 int? _asInt(Object? value) {

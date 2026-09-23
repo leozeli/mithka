@@ -168,15 +168,7 @@ class SubscriptionFeedController extends ChangeNotifier {
       id,
       items: [
         for (final entry in feed.entries)
-          FeedItem(
-            id: '$id#${entry.id}',
-            subscriptionId: id,
-            title: entry.title,
-            sourceName: title,
-            excerpt: entry.excerpt,
-            publishedAt: entry.publishedAt,
-            link: entry.link,
-          ),
+          _rssFeedItem(subscriptionId: id, sourceName: title, entry: entry),
       ],
       clearError: true,
       fetchedAt: now,
@@ -284,14 +276,10 @@ class SubscriptionFeedController extends ChangeNotifier {
             clearError: true,
             items: [
               for (final entry in feed.entries)
-                FeedItem(
-                  id: '${subscription.id}#${entry.id}',
+                _rssFeedItem(
                   subscriptionId: subscription.id,
-                  title: entry.title,
                   sourceName: title,
-                  excerpt: entry.excerpt,
-                  publishedAt: entry.publishedAt,
-                  link: entry.link,
+                  entry: entry,
                 ),
             ],
           );
@@ -323,6 +311,23 @@ class SubscriptionFeedController extends ChangeNotifier {
       _notify();
       return failure;
     }
+  }
+
+  FeedItem _rssFeedItem({
+    required String subscriptionId,
+    required String sourceName,
+    required ParsedFeedEntry entry,
+  }) {
+    return FeedItem(
+      id: '$subscriptionId#${entry.id}',
+      subscriptionId: subscriptionId,
+      title: entry.title,
+      sourceName: sourceName,
+      summary: entry.summary,
+      body: entry.body,
+      publishedAt: entry.publishedAt,
+      link: entry.link,
+    );
   }
 
   void _notify() {

@@ -137,12 +137,14 @@ FeedItem? feedItemFromTelegramMessage({
     excerpt = excerpt.substring(title.length).trimLeft();
   }
   final resolvedChatId = message.chatId ?? chatId;
+  final body = _clip(excerpt, 4000);
   return FeedItem(
     id: telegramFeedItemId(resolvedChatId, message.id),
     subscriptionId: subscriptionId,
     title: title,
     sourceName: sourceName,
-    excerpt: _clip(excerpt, 4000),
+    summary: feedListSummary(body),
+    body: body,
     publishedAt: message.date,
     link: usableLink,
     chatId: resolvedChatId,

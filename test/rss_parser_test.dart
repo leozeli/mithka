@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mithka/subscriptions/feed_models.dart';
 import 'package:mithka/subscriptions/rss_parser.dart';
 
 void main() {
@@ -30,7 +31,8 @@ void main() {
     expect(feed.entries.first.title, 'Hello world');
     expect(feed.entries.first.id, 'a-1');
     expect(feed.entries.first.link, 'https://example.com/a');
-    expect(feed.entries.first.excerpt, 'First line\nSecond');
+    expect(feed.entries.first.summary, 'First line');
+    expect(feed.entries.first.body, 'First line\n\nSecond');
     expect(
       feed.entries.first.publishedAt,
       DateTime.utc(2026, 9, 23, 2, 29).millisecondsSinceEpoch ~/ 1000,
@@ -60,7 +62,8 @@ void main() {
     expect(feed.title, 'Atom Feed');
     expect(feed.entries.single.id, 'urn:1');
     expect(feed.entries.single.link, 'https://example.com/e');
-    expect(feed.entries.single.excerpt, 'Hi');
+    expect(feed.entries.single.summary, 'Hi');
+    expect(feed.entries.single.body, 'Hi');
     expect(
       feed.entries.single.publishedAt,
       DateTime.utc(2026, 9, 23, 2, 29).millisecondsSinceEpoch ~/ 1000,
@@ -97,6 +100,59 @@ void main() {
     );
     expect(feed.title, 'Quiet');
     expect(feed.entries, isEmpty);
+  });
+
+  test('keeps a short summary and a paragraph body for a long description', () {
+    final readme = List.filled(80, 'readme').join(' ');
+    final feed = parseRssOrAtom('''
+<rss><channel><title>Trending</title>
+  <item>
+    <title>org/repo</title>
+    <link>https://github.com/org/repo</link>
+    <description><![CDATA[
+      <p>A framework for building agentic apps.</p>
+      <p><a href="https://example.com">https://example.com</a></p>
+      <hr>
+      <h1>Readme</h1>
+      <p>First section explains the tool.</p>
+      <ul>
+        <li>Alpha feature</li>
+        <li>Beta feature</li>
+      </ul>
+      <p>$readme</p>
+    ]]></description>
+  </item>
+  <item>
+    <title>Split fields</title>
+    <link>https://example.com/split</link>
+    <description><![CDATA[<p>Card blurb from the description.</p>]]></description>
+    <content:encoded><![CDATA[
+      <p>Card blurb from the description.</p>
+      <p>The encoded article continues here.</p>
+    ]]></content:encoded>
+  </item>
+</channel></rss>
+''');
+
+    final trending = feed.entries.firstWhere(
+      (entry) => entry.title == 'org/repo',
+    );
+    expect(trending.summary, 'A framework for building agentic apps.');
+    expect(trending.summary.length, lessThanOrEqualTo(feedSummaryMaxChars));
+    expect(trending.summary.contains('Alpha feature'), isFalse);
+    expect(trending.body, contains('First section explains the tool.'));
+    expect(trending.body, contains('\n\n'));
+    expect(trending.body, contains('• Alpha feature'));
+    expect(trending.body, contains('• Beta feature'));
+    expect(trending.body, contains('Readme'));
+    expect(trending.body.length, lessThanOrEqualTo(feedBodyMaxChars));
+
+    final split = feed.entries.firstWhere(
+      (entry) => entry.title == 'Split fields',
+    );
+    expect(split.summary, 'Card blurb from the description.');
+    expect(split.body, contains('The encoded article continues here.'));
+    expect(split.body, contains('\n\n'));
   });
 
   test('canonicalizes feed URLs', () {

@@ -5,6 +5,8 @@
 //  timeline needs and ignores the rest of the document.
 //
 
+import 'feed_models.dart';
+
 class FeedParseException implements Exception {
   const FeedParseException();
 }
@@ -20,14 +22,20 @@ class ParsedFeedEntry {
   const ParsedFeedEntry({
     required this.id,
     required this.title,
-    required this.excerpt,
+    required this.summary,
+    required this.body,
     required this.publishedAt,
     this.link,
   });
 
   final String id;
   final String title;
-  final String excerpt;
+
+  /// First useful paragraph, short enough for a timeline card.
+  final String summary;
+
+  /// Article text with blank lines between paragraphs.
+  final String body;
   final int publishedAt;
   final String? link;
 }
@@ -89,19 +97,36 @@ _XmlElement? _feedElement(_XmlElement root) {
 ParsedFeedEntry? _parseEntry(_XmlElement entry, int fallbackDate) {
   final title = feedPlainText(_directChildText(entry, 'title'));
   final link = _entryLink(entry);
-  final excerpt = _truncate(feedPlainText(_entryBody(entry)), 4000);
+  final description = _directChildText(entry, 'description');
+  final summaryHtml = _directChildText(entry, 'summary');
+  final bodyHtml =
+      _firstNonEmpty([
+        _directChildText(entry, 'encoded'),
+        _directChildText(entry, 'content'),
+        description,
+        summaryHtml,
+      ]) ??
+      '';
+  final body = clipFeedBody(feedPlainText(bodyHtml));
+  final summarySource = _firstNonEmpty([description, summaryHtml]);
+  final summary = feedListSummary(
+    summarySource == null ? body : feedPlainText(summarySource),
+  );
   final idText = _firstNonEmpty([
     _directChildText(entry, 'guid'),
     _directChildText(entry, 'id'),
     link,
     title,
   ]);
-  if (idText == null && title.isEmpty && excerpt.isEmpty) return null;
+  if (idText == null && title.isEmpty && summary.isEmpty && body.isEmpty) {
+    return null;
+  }
   final published = _entryDate(entry) ?? (fallbackDate < 0 ? 0 : fallbackDate);
   return ParsedFeedEntry(
     id: idText ?? 'item-$fallbackDate',
     title: _truncate(_singleLine(title), 200),
-    excerpt: excerpt,
+    summary: summary,
+    body: body,
     publishedAt: published,
     link: link,
   );
@@ -127,16 +152,6 @@ String? _entryLink(_XmlElement entry) {
   final link = (hrefLink ?? textLink)?.trim();
   if (link == null || link.isEmpty) return null;
   return link;
-}
-
-String _entryBody(_XmlElement entry) {
-  return _firstNonEmpty([
-        _directChildText(entry, 'encoded'),
-        _directChildText(entry, 'content'),
-        _directChildText(entry, 'description'),
-        _directChildText(entry, 'summary'),
-      ]) ??
-      '';
 }
 
 int? _entryDate(_XmlElement entry) {
@@ -171,25 +186,43 @@ String _truncate(String text, int maxChars) {
 }
 
 /// Strips tags and decodes the entities that show up in feed titles and
-/// descriptions. The result is plain text for the timeline, not HTML.
+/// descriptions.
+///
+/// Paragraphs, headings, list items, and horizontal rules become blank lines
+/// so a detail page can breathe. Images are dropped. The result is plain text.
 String feedPlainText(String raw) {
   var text = decodeXmlEntities(raw);
   text = text.replaceAll(
     RegExp(
-      r'<(script|style)\b[^>]*>.*?</\1>',
+      r'<(script|style|svg|picture)\b[^>]*>.*?</\1>',
       caseSensitive: false,
       dotAll: true,
     ),
     '',
   );
+  text = text.replaceAll(RegExp(r'<img\b[^>]*>', caseSensitive: false), '');
   text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-  text = text.replaceAll(RegExp(r'</p\s*>', caseSensitive: false), '\n');
+  text = text.replaceAll(RegExp(r'<hr\s*/?>', caseSensitive: false), '\n\n');
+  text = text.replaceAll(RegExp(r'<li\b[^>]*>', caseSensitive: false), '\n• ');
+  text = text.replaceAll(RegExp(r'</li\s*>', caseSensitive: false), '\n');
+  text = text.replaceAll(
+    RegExp(
+      r'</(p|div|h[1-6]|blockquote|pre|tr|table|ul|ol|section|article)\s*>',
+      caseSensitive: false,
+    ),
+    '\n\n',
+  );
   text = text.replaceAll(RegExp(r'<[^>]+>'), '');
   text = decodeXmlEntities(text);
   text = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   text = text.replaceAll(RegExp(r'[ \t]+\n'), '\n');
-  text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  text = text.replaceAll(RegExp(r'\n[ \t]+'), '\n');
   text = text.replaceAll(RegExp(r'[ \t]{2,}'), ' ');
+  text = text
+      .split('\n')
+      .map((line) => line.trim())
+      .join('\n')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n');
   return text.trim();
 }
 
