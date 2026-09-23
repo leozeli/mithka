@@ -1,9 +1,11 @@
 //
 //  chat_list_folder_directory.dart
 //
-//  Telegram folders as expandable sections inside the message list, optionally
-//  nested under client-only local groups. Membership stays a flat TDLib
-//  chat-list filter. The outer rail and tab strip are not required.
+//  Telegram folders and local groups live in the message list. A folder row
+//  selects that folder and the chats below are that list, the way the old
+//  side rail filtered. Groups only expand to show their folder rows.
+//  Membership stays a flat TDLib chat-list filter. The outer rail is not
+//  required.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -17,7 +19,7 @@ import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import 'local_folder_group.dart';
 
-/// Extra inset for chats nested under a Telegram folder section.
+/// Extra inset for a Telegram folder row nested under a local group.
 const chatListFolderChildIndent = 16.0;
 
 /// Section headers share the chat row's height so the list keeps one rhythm.
@@ -41,6 +43,7 @@ class ChatListDirectorySlot {
     this.folderId,
     this.groupId,
     this.expanded = false,
+    this.selected = false,
     this.entryIndex,
     this.lastInSection = false,
     this.indent = 0,
@@ -53,10 +56,15 @@ class ChatListDirectorySlot {
 
   /// Set on a local-group header. Telegram never assigns this id.
   final String? groupId;
+
+  /// A local group is expanded when its folder rows are visible.
   final bool expanded;
+
+  /// The folder or All row that currently filters the chats below the headers.
+  final bool selected;
   final int? entryIndex;
 
-  /// The last chat row of an expanded Telegram folder, used to page that list.
+  /// The last chat row of the selected folder, used to page that list.
   final bool lastInSection;
 
   /// Leading inset. A grouped folder is one step in; its chats are two.
@@ -82,23 +90,21 @@ double chatListDirectorySlotExtent(
   };
 }
 
-/// Local groups, then ungrouped Telegram folders, then "All". Groups and
-/// folders sit above the main list so they stay reachable without scrolling
-/// through every chat. "All" starts expanded. A folder belongs to at most one
-/// group; collapsing a group hides that group's folders and their chats.
+/// Local groups, then ungrouped Telegram folders, then "All", then the chats
+/// of the selected row. Groups and folders stay above the chats so they can
+/// be selected without scrolling the whole list. Collapsing a group hides
+/// its folder rows. The selected list is still the chats underneath, including
+/// when that folder's row is inside a collapsed group.
 List<ChatListDirectorySlot> buildChatListFolderDirectory({
   required List<int> folderIds,
-  required Set<int> expandedFolderIds,
-  required bool allExpanded,
-  required Map<int, int> folderEntryCounts,
-  required Set<int> loadingFolderIds,
-  required int allEntryCount,
-  required bool allLoading,
+  required int? selectedFolderId,
+  required int selectedEntryCount,
+  required bool selectedLoading,
+  required int selectedPlaceholderCount,
   required bool hasPullDownArchiveSlot,
   required bool hasFiltered,
   required bool showInlineArchive,
   required int inlineArchiveIndex,
-  required int allPlaceholderCount,
   List<LocalFolderGroup> groups = const [],
 }) {
   final slots = <ChatListDirectorySlot>[];
@@ -122,77 +128,57 @@ List<ChatListDirectorySlot> buildChatListFolderDirectory({
     for (final id in group.childFolderIds) {
       if (!folderIdSet.contains(id) || !placed.add(id)) continue;
       if (!group.expanded) continue;
-      _appendFolderSection(
+      _appendFolderHeader(
         slots,
         folderId: id,
-        expanded: expandedFolderIds.contains(id),
         headerIndent: chatListFolderChildIndent,
-        entryCount: folderEntryCounts[id] ?? 0,
-        loading: loadingFolderIds.contains(id),
+        selectedFolderId: selectedFolderId,
       );
     }
   }
   for (final id in folderIds) {
     if (placed.contains(id)) continue;
-    _appendFolderSection(
+    _appendFolderHeader(
       slots,
       folderId: id,
-      expanded: expandedFolderIds.contains(id),
       headerIndent: 0,
-      entryCount: folderEntryCounts[id] ?? 0,
-      loading: loadingFolderIds.contains(id),
+      selectedFolderId: selectedFolderId,
     );
   }
   slots.add(
     ChatListDirectorySlot(
       kind: ChatListDirectorySlotKind.folderHeader,
-      expanded: allExpanded,
+      selected: selectedFolderId == null,
     ),
   );
-  if (allExpanded) {
-    _appendSectionBody(
-      slots,
-      folderId: null,
-      entryCount: allEntryCount,
-      loading: allLoading,
-      placeholderCount: allPlaceholderCount,
-      hasFiltered: hasFiltered,
-      showInlineArchive: showInlineArchive,
-      inlineArchiveIndex: inlineArchiveIndex,
-      pageWhenLastEntryVisible: false,
-    );
-  }
+  final showingAll = selectedFolderId == null;
+  _appendSectionBody(
+    slots,
+    folderId: selectedFolderId,
+    entryCount: selectedEntryCount,
+    loading: selectedLoading,
+    placeholderCount: selectedPlaceholderCount,
+    hasFiltered: showingAll && hasFiltered,
+    showInlineArchive: showingAll && showInlineArchive,
+    inlineArchiveIndex: inlineArchiveIndex,
+    pageWhenLastEntryVisible: !showingAll,
+  );
   return slots;
 }
 
-void _appendFolderSection(
+void _appendFolderHeader(
   List<ChatListDirectorySlot> slots, {
   required int folderId,
-  required bool expanded,
   required double headerIndent,
-  required int entryCount,
-  required bool loading,
+  required int? selectedFolderId,
 }) {
   slots.add(
     ChatListDirectorySlot(
       kind: ChatListDirectorySlotKind.folderHeader,
       folderId: folderId,
-      expanded: expanded,
       indent: headerIndent,
+      selected: folderId == selectedFolderId,
     ),
-  );
-  if (!expanded) return;
-  _appendSectionBody(
-    slots,
-    folderId: folderId,
-    entryCount: entryCount,
-    loading: loading,
-    placeholderCount: 3,
-    hasFiltered: false,
-    showInlineArchive: false,
-    inlineArchiveIndex: -1,
-    pageWhenLastEntryVisible: true,
-    indent: headerIndent + chatListFolderChildIndent,
   );
 }
 
@@ -301,11 +287,12 @@ double chatListDirectoryScrollOffset({
   return offset;
 }
 
-/// One expandable local group, Telegram folder, or the main "All" section.
+/// One local group, Telegram folder, or the main "All" row.
 ///
 /// The row uses the chat list's height, horizontal padding, and title style.
-/// A small tertiary chevron sits in the avatar column; the title then starts
-/// where a chat name starts. No separate fill, rule, or folder glyph.
+/// A group shows a small tertiary chevron in the avatar column and expands to
+/// its folder rows. A folder or All is selected instead: the title stays in
+/// the chat-name column, with no chevron and no folder glyph.
 ///
 /// When [draggable], a pointer drag reorders the row. The grab cursor and a
 /// tertiary bars glyph on hover are the only extra chrome.
@@ -313,8 +300,10 @@ class ChatListFolderHeader extends StatelessWidget {
   const ChatListFolderHeader({
     super.key,
     required this.title,
-    required this.expanded,
     required this.onTap,
+    this.expanded = false,
+    this.showsChevron = false,
+    this.selected = false,
     this.onSecondaryTap,
     this.draggable = false,
     this.dragging = false,
@@ -322,8 +311,14 @@ class ChatListFolderHeader extends StatelessWidget {
   });
 
   final String title;
-  final bool expanded;
   final VoidCallback onTap;
+
+  /// Chevron rotation for a local group. Folder and All rows leave this false.
+  final bool expanded;
+
+  /// Local groups disclose their folder rows. Folder and All rows do not.
+  final bool showsChevron;
+  final bool selected;
   final VoidCallback? onSecondaryTap;
   final bool draggable;
   final bool dragging;
@@ -333,7 +328,8 @@ class ChatListFolderHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppInteractiveSurface(
       semanticLabel: title,
-      expanded: expanded,
+      expanded: showsChevron ? expanded : null,
+      selected: selected,
       onTap: onTap,
       onSecondaryTap: onSecondaryTap,
       mouseCursor: draggable
@@ -342,6 +338,7 @@ class ChatListFolderHeader extends StatelessWidget {
       child: _FolderHeaderChrome(
         title: title,
         expanded: expanded,
+        showsChevron: showsChevron,
         draggable: draggable,
         highlighted: highlighted,
       ),
@@ -353,12 +350,14 @@ class _FolderHeaderChrome extends StatefulWidget {
   const _FolderHeaderChrome({
     required this.title,
     required this.expanded,
+    required this.showsChevron,
     required this.draggable,
     required this.highlighted,
   });
 
   final String title;
   final bool expanded;
+  final bool showsChevron;
   final bool draggable;
   final bool highlighted;
 
@@ -392,18 +391,23 @@ class _FolderHeaderChromeState extends State<_FolderHeaderChrome> {
                 children: [
                   SizedBox(
                     width: AppMetric.chatListAvatarSize(),
-                    child: Center(
-                      child: AnimatedRotation(
-                        turns: widget.expanded ? 0 : collapsedTurns,
-                        duration: AppMotion.duration(context, AppMotion.quick),
-                        curve: AppMotion.standard,
-                        child: AppIcon(
-                          HeroAppIcons.chevronDown,
-                          size: AppIconSize.xs,
-                          color: colors.textTertiary,
-                        ),
-                      ),
-                    ),
+                    child: widget.showsChevron
+                        ? Center(
+                            child: AnimatedRotation(
+                              turns: widget.expanded ? 0 : collapsedTurns,
+                              duration: AppMotion.duration(
+                                context,
+                                AppMotion.quick,
+                              ),
+                              curve: AppMotion.standard,
+                              child: AppIcon(
+                                HeroAppIcons.chevronDown,
+                                size: AppIconSize.xs,
+                                color: colors.textTertiary,
+                              ),
+                            ),
+                          )
+                        : null,
                   ),
                   const SizedBox(width: AppSpacing.lg),
                   Expanded(
@@ -471,6 +475,7 @@ class ChatListSectionDrag extends StatefulWidget {
     required this.token,
     required this.title,
     required this.expanded,
+    required this.showsChevron,
     required this.highlight,
     required this.resolveTarget,
     required this.onDrop,
@@ -482,6 +487,7 @@ class ChatListSectionDrag extends StatefulWidget {
   final String token;
   final String title;
   final bool expanded;
+  final bool showsChevron;
   final ValueNotifier<String?> highlight;
   final String? Function(Offset global) resolveTarget;
   final ValueChanged<String> onDrop;
@@ -618,6 +624,7 @@ class _ChatListSectionDragState extends State<ChatListSectionDrag> {
             child: _SectionDragFeedback(
               title: widget.title,
               expanded: widget.expanded,
+              showsChevron: widget.showsChevron,
             ),
           ),
         );
@@ -663,10 +670,15 @@ class _ChatListSectionDragState extends State<ChatListSectionDrag> {
 }
 
 class _SectionDragFeedback extends StatelessWidget {
-  const _SectionDragFeedback({required this.title, required this.expanded});
+  const _SectionDragFeedback({
+    required this.title,
+    required this.expanded,
+    required this.showsChevron,
+  });
 
   final String title;
   final bool expanded;
+  final bool showsChevron;
 
   @override
   Widget build(BuildContext context) {
@@ -686,6 +698,7 @@ class _SectionDragFeedback extends StatelessWidget {
       child: _FolderHeaderChrome(
         title: title,
         expanded: expanded,
+        showsChevron: showsChevron,
         draggable: false,
         highlighted: false,
       ),

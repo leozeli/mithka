@@ -32,7 +32,7 @@ void main() {
   });
 
   testWidgets(
-    'folders expand in the list and the outer rail stays empty',
+    'folders in the list select in place and the outer rail stays empty',
     (tester) async {
       await _pumpFolders(tester, updates);
       final controller = tester
@@ -40,13 +40,13 @@ void main() {
           .controller!;
       expect(find.byType(ChatFolderRail), findsNothing);
       expect(controller.sideFolders.value, isNull);
-      expect(_header(tester, null).expanded, isTrue);
-      expect(_header(tester, 1).expanded, isFalse);
+      expect(_header(tester, null).selected, isTrue);
+      expect(_header(tester, 1).selected, isFalse);
 
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
       await tester.pump();
-      expect(_header(tester, 1).expanded, isTrue);
-      expect(_header(tester, null).expanded, isTrue);
+      expect(_header(tester, 1).selected, isTrue);
+      expect(_header(tester, null).selected, isFalse);
       expect(
         tester
             .widget<ChatListFolderPanes>(find.byType(ChatListFolderPanes))
@@ -56,19 +56,24 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
       await tester.pump();
-      expect(_header(tester, 1).expanded, isFalse);
+      expect(_header(tester, 1).selected, isTrue);
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-all')));
+      await tester.pump();
+      expect(_header(tester, null).selected, isTrue);
+      expect(_header(tester, 1).selected, isFalse);
       await _disposeFolders(tester);
     },
     variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
 
   testWidgets(
-    'reduced motion still expands a folder section in place',
+    'reduced motion still selects a folder in place',
     (tester) async {
       await _pumpFolders(tester, updates, reducedMotion: true);
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-1')));
       await tester.pump();
-      expect(_header(tester, 1).expanded, isTrue);
+      expect(_header(tester, 1).selected, isTrue);
+      expect(_header(tester, null).selected, isFalse);
       expect(
         tester
             .widget<ChatListFolderPanes>(find.byType(ChatListFolderPanes))
@@ -93,8 +98,8 @@ void main() {
       await tester.pump();
       await gesture.cancel();
       await tester.pumpAndSettle();
-      expect(_header(tester, null).expanded, isTrue);
-      expect(_header(tester, 1).expanded, isFalse);
+      expect(_header(tester, null).selected, isTrue);
+      expect(_header(tester, 1).selected, isFalse);
       expect(find.byType(ChatFolderRail), findsNothing);
       await _disposeFolders(tester);
     },

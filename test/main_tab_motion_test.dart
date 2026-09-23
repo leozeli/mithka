@@ -35,7 +35,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('expanding list folders keeps All open and the Messages tab', (
+  testWidgets('selecting list folders stays on the Messages tab', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -67,26 +67,26 @@ void main() {
       expect(controller.sideFolders.value, isNull);
       final all = find.byKey(const ValueKey('chat-list-folder-all'));
       final work = find.byKey(const ValueKey('chat-list-folder-1'));
-      expect(tester.widget<ChatListFolderHeader>(all).expanded, isTrue);
-      expect(tester.widget<ChatListFolderHeader>(work).expanded, isFalse);
+      expect(tester.widget<ChatListFolderHeader>(all).selected, isTrue);
+      expect(tester.widget<ChatListFolderHeader>(work).selected, isFalse);
       await tester.tap(work);
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-2')));
       for (var frame = 0; frame < 24; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
-        expect(tester.widget<ChatListFolderHeader>(all).expanded, isTrue);
         expect(find.byType(ChatFolderRail), findsNothing);
+        expect(
+          tester
+              .widget<ChatListFolderHeader>(
+                find.byKey(const ValueKey('chat-list-folder-2')),
+              )
+              .selected,
+          isTrue,
+        );
       }
       expect(controller.toggleFirstUnreadRequests, toggles);
-      expect(
-        tester
-            .widget<ChatListFolderHeader>(
-              find.byKey(const ValueKey('chat-list-folder-2')),
-            )
-            .expanded,
-        isTrue,
-      );
-      expect(tester.widget<ChatListFolderHeader>(work).expanded, isTrue);
+      expect(tester.widget<ChatListFolderHeader>(all).selected, isFalse);
+      expect(tester.widget<ChatListFolderHeader>(work).selected, isFalse);
       await _disposeShell(tester);
     } finally {
       debugDefaultTargetPlatformOverride = null;

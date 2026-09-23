@@ -18,85 +18,110 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  test(
-    'directory keeps collapsed folders as headers and nests their chats',
-    () {
-      final slots = buildChatListFolderDirectory(
-        folderIds: const [7, 8],
-        expandedFolderIds: const {7},
-        allExpanded: true,
-        folderEntryCounts: const {7: 2, 8: 4},
-        loadingFolderIds: const {},
-        allEntryCount: 3,
-        allLoading: false,
-        hasPullDownArchiveSlot: false,
-        hasFiltered: false,
-        showInlineArchive: false,
-        inlineArchiveIndex: -1,
-        allPlaceholderCount: 0,
-      );
+  test('selecting All shows only the main chats under the folder rows', () {
+    final slots = buildChatListFolderDirectory(
+      folderIds: const [7, 8],
+      selectedFolderId: null,
+      selectedEntryCount: 3,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
+      hasPullDownArchiveSlot: false,
+      hasFiltered: false,
+      showInlineArchive: false,
+      inlineArchiveIndex: -1,
+    );
 
-      expect(
-        slots
-            .map((slot) => (slot.kind, slot.folderId, slot.entryIndex))
-            .toList(),
-        [
-          (ChatListDirectorySlotKind.folderHeader, 7, null),
-          (ChatListDirectorySlotKind.entry, 7, 0),
-          (ChatListDirectorySlotKind.entry, 7, 1),
-          (ChatListDirectorySlotKind.folderHeader, 8, null),
-          (ChatListDirectorySlotKind.folderHeader, null, null),
-          (ChatListDirectorySlotKind.entry, null, 0),
-          (ChatListDirectorySlotKind.entry, null, 1),
-          (ChatListDirectorySlotKind.entry, null, 2),
-        ],
-      );
-      expect(slots[2].lastInSection, isTrue);
-      expect(
-        slots.where((slot) => slot.folderId == null && slot.lastInSection),
-        isEmpty,
-      );
-    },
-  );
+    expect(
+      slots.map((slot) => (slot.kind, slot.folderId, slot.entryIndex)).toList(),
+      [
+        (ChatListDirectorySlotKind.folderHeader, 7, null),
+        (ChatListDirectorySlotKind.folderHeader, 8, null),
+        (ChatListDirectorySlotKind.folderHeader, null, null),
+        (ChatListDirectorySlotKind.entry, null, 0),
+        (ChatListDirectorySlotKind.entry, null, 1),
+        (ChatListDirectorySlotKind.entry, null, 2),
+      ],
+    );
+    expect(slots.last.selected, isFalse);
+    expect(slots[2].selected, isTrue);
+    expect(slots.where((slot) => slot.lastInSection), isEmpty);
+  });
 
-  test(
-    'collapsed All omits main chats and an empty folder explains itself',
-    () {
-      final slots = buildChatListFolderDirectory(
-        folderIds: const [4],
-        expandedFolderIds: const {4},
-        allExpanded: false,
-        folderEntryCounts: const {4: 0},
-        loadingFolderIds: const {},
-        allEntryCount: 9,
-        allLoading: false,
-        hasPullDownArchiveSlot: true,
-        hasFiltered: true,
-        showInlineArchive: true,
-        inlineArchiveIndex: 0,
-        allPlaceholderCount: 6,
-      );
-      expect(slots.first.kind, ChatListDirectorySlotKind.pullDownArchive);
-      expect(
-        slots.where(
-          (slot) =>
-              slot.folderId == null &&
-              slot.kind == ChatListDirectorySlotKind.entry,
-        ),
-        isEmpty,
-      );
-      expect(
-        slots.where(
-          (slot) =>
-              slot.folderId == 4 &&
-              slot.kind == ChatListDirectorySlotKind.empty,
-        ),
-        hasLength(1),
-      );
-    },
-  );
+  test('selecting a folder replaces the main chats with that folder', () {
+    final slots = buildChatListFolderDirectory(
+      folderIds: const [7, 8],
+      selectedFolderId: 7,
+      selectedEntryCount: 2,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
+      hasPullDownArchiveSlot: false,
+      hasFiltered: false,
+      showInlineArchive: false,
+      inlineArchiveIndex: -1,
+    );
+    expect(
+      slots.map((slot) => (slot.kind, slot.folderId, slot.entryIndex)).toList(),
+      [
+        (ChatListDirectorySlotKind.folderHeader, 7, null),
+        (ChatListDirectorySlotKind.folderHeader, 8, null),
+        (ChatListDirectorySlotKind.folderHeader, null, null),
+        (ChatListDirectorySlotKind.entry, 7, 0),
+        (ChatListDirectorySlotKind.entry, 7, 1),
+      ],
+    );
+    expect(slots.first.selected, isTrue);
+    expect(slots[2].selected, isFalse);
+    expect(slots.last.lastInSection, isTrue);
+    expect(slots.last.indent, 0);
+  });
 
-  test('local groups nest folders and hide them when collapsed', () {
+  test('an empty selected folder explains itself and skips the main list', () {
+    final slots = buildChatListFolderDirectory(
+      folderIds: const [4],
+      selectedFolderId: 4,
+      selectedEntryCount: 0,
+      selectedLoading: false,
+      selectedPlaceholderCount: 6,
+      hasPullDownArchiveSlot: false,
+      hasFiltered: false,
+      showInlineArchive: false,
+      inlineArchiveIndex: -1,
+    );
+    expect(
+      slots.where((slot) => slot.kind == ChatListDirectorySlotKind.entry),
+      isEmpty,
+    );
+    expect(
+      slots.where((slot) => slot.kind == ChatListDirectorySlotKind.empty),
+      hasLength(1),
+    );
+    expect(slots.last.folderId, 4);
+  });
+
+  test('All keeps archive and filtered rows when it is selected', () {
+    final slots = buildChatListFolderDirectory(
+      folderIds: const [4],
+      selectedFolderId: null,
+      selectedEntryCount: 1,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
+      hasPullDownArchiveSlot: true,
+      hasFiltered: true,
+      showInlineArchive: true,
+      inlineArchiveIndex: 0,
+    );
+    expect(slots.first.kind, ChatListDirectorySlotKind.pullDownArchive);
+    expect(
+      slots.where((slot) => slot.kind == ChatListDirectorySlotKind.filtered),
+      hasLength(1),
+    );
+    expect(
+      slots.where((slot) => slot.kind == ChatListDirectorySlotKind.archive),
+      hasLength(1),
+    );
+  });
+
+  test('local groups nest folder rows and hide them when collapsed', () {
     const group = LocalFolderGroup(
       id: 'g1',
       title: 'Focus',
@@ -104,44 +129,38 @@ void main() {
     );
     final open = buildChatListFolderDirectory(
       folderIds: const [7, 8],
-      expandedFolderIds: const {7},
-      allExpanded: true,
-      folderEntryCounts: const {7: 1, 8: 0},
-      loadingFolderIds: const {},
-      allEntryCount: 1,
-      allLoading: false,
+      selectedFolderId: 7,
+      selectedEntryCount: 1,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
       hasPullDownArchiveSlot: false,
       hasFiltered: false,
       showInlineArchive: false,
       inlineArchiveIndex: -1,
-      allPlaceholderCount: 0,
       groups: const [group],
     );
     expect(
       open.map((slot) => (slot.kind, slot.groupId, slot.folderId, slot.indent)),
       [
-        (ChatListDirectorySlotKind.groupHeader, 'g1', null, 0),
-        (ChatListDirectorySlotKind.folderHeader, null, 7, 16),
-        (ChatListDirectorySlotKind.entry, null, 7, 32),
-        (ChatListDirectorySlotKind.folderHeader, null, 8, 0),
-        (ChatListDirectorySlotKind.folderHeader, null, null, 0),
-        (ChatListDirectorySlotKind.entry, null, null, 0),
+        (ChatListDirectorySlotKind.groupHeader, 'g1', null, 0.0),
+        (ChatListDirectorySlotKind.folderHeader, null, 7, 16.0),
+        (ChatListDirectorySlotKind.folderHeader, null, 8, 0.0),
+        (ChatListDirectorySlotKind.folderHeader, null, null, 0.0),
+        (ChatListDirectorySlotKind.entry, null, 7, 0.0),
       ],
     );
+    expect(open[1].selected, isTrue);
 
     final closed = buildChatListFolderDirectory(
       folderIds: const [7, 8],
-      expandedFolderIds: const {7},
-      allExpanded: true,
-      folderEntryCounts: const {7: 1},
-      loadingFolderIds: const {},
-      allEntryCount: 1,
-      allLoading: false,
+      selectedFolderId: 7,
+      selectedEntryCount: 1,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
       hasPullDownArchiveSlot: false,
       hasFiltered: false,
       showInlineArchive: false,
       inlineArchiveIndex: -1,
-      allPlaceholderCount: 0,
       groups: const [
         LocalFolderGroup(
           id: 'g1',
@@ -151,7 +170,21 @@ void main() {
         ),
       ],
     );
-    expect(closed.where((slot) => slot.folderId == 7), isEmpty);
+    expect(
+      closed.where(
+        (slot) =>
+            slot.kind == ChatListDirectorySlotKind.folderHeader &&
+            slot.folderId == 7,
+      ),
+      isEmpty,
+    );
+    expect(
+      closed.where(
+        (slot) =>
+            slot.kind == ChatListDirectorySlotKind.entry && slot.folderId == 7,
+      ),
+      hasLength(1),
+    );
     expect(
       closed.where(
         (slot) =>
@@ -165,17 +198,14 @@ void main() {
   test('scroll offset accounts for folder headers above the main list', () {
     final slots = buildChatListFolderDirectory(
       folderIds: const [1],
-      expandedFolderIds: const {},
-      allExpanded: true,
-      folderEntryCounts: const {},
-      loadingFolderIds: const {},
-      allEntryCount: 2,
-      allLoading: false,
+      selectedFolderId: null,
+      selectedEntryCount: 2,
+      selectedLoading: false,
+      selectedPlaceholderCount: 0,
       hasPullDownArchiveSlot: false,
       hasFiltered: false,
       showInlineArchive: false,
       inlineArchiveIndex: -1,
-      allPlaceholderCount: 0,
     );
     final unread = slots.indexWhere(
       (slot) =>
@@ -248,7 +278,7 @@ void main() {
   });
 
   testWidgets(
-    'folders and local groups expand inside the chat list',
+    'folders in the chat list select like the side rail',
     (tester) async {
       final updates = StreamController<Map<String, dynamic>>.broadcast();
       TdClient.shared.configureProxy(
@@ -348,10 +378,17 @@ void main() {
         find.descendant(of: workHeader, matching: find.byType(ChatFolderIcon)),
         findsNothing,
       );
-      final chevron = tester.widget<AppIcon>(
+      expect(
         find.descendant(of: workHeader, matching: find.byType(AppIcon)),
+        findsNothing,
       );
-      expect(chevron.size, AppIconSize.xs);
+      expect(tester.widget<ChatListFolderHeader>(workHeader).selected, isFalse);
+      expect(
+        tester.widget<ChatListFolderHeader>(workHeader).showsChevron,
+        isFalse,
+      );
+      final allHeader = find.byKey(const ValueKey('chat-list-folder-all'));
+      expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isTrue);
       expect(
         tester.getSize(workHeader).height,
         tester
@@ -359,21 +396,30 @@ void main() {
             .height,
       );
 
-      await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
+      await tester.tap(workHeader);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
 
       expect(find.text('Work chat'), findsOneWidget);
-      expect(find.text('Main chat'), findsOneWidget);
+      expect(find.text('Main chat'), findsNothing);
+      expect(tester.widget<ChatListFolderHeader>(workHeader).selected, isTrue);
+      expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isFalse);
       expect(
         tester.getTopLeft(find.text('Work chat')).dy,
-        lessThan(tester.getTopLeft(find.text('Main chat')).dy),
+        greaterThan(tester.getTopLeft(allHeader).dy),
       );
+      expect(find.byKey(ChatListSelectionHighlight.railKey), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
+      await tester.tap(workHeader);
       await tester.pump();
-      expect(find.text('Work chat'), findsNothing);
+      expect(find.text('Work chat'), findsOneWidget);
+      expect(tester.widget<ChatListFolderHeader>(workHeader).selected, isTrue);
+
+      await tester.tap(allHeader);
+      await tester.pump();
       expect(find.text('Main chat'), findsOneWidget);
+      expect(find.text('Work chat'), findsNothing);
+      expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isTrue);
 
       await _secondaryClick(
         tester,
@@ -413,12 +459,30 @@ void main() {
       expect(find.byKey(const ValueKey('chat-list-folder-3')), findsNothing);
       expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
 
+      final focusHeader = find.ancestor(
+        of: find.text('Focus'),
+        matching: find.byType(ChatListFolderHeader),
+      );
+      expect(
+        tester.widget<ChatListFolderHeader>(focusHeader).showsChevron,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<AppIcon>(
+              find.descendant(of: focusHeader, matching: find.byType(AppIcon)),
+            )
+            .size,
+        AppIconSize.xs,
+      );
+
       await tester.tap(find.text('Focus'));
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(find.text('Work chat'), findsOneWidget);
+      expect(find.text('Main chat'), findsNothing);
       expect(
         tester.getTopLeft(find.text('Focus')).dy,
         lessThan(
@@ -429,12 +493,21 @@ void main() {
       );
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dy,
-        lessThan(tester.getTopLeft(find.text('Work chat')).dy),
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-all')))
+              .dy,
+        ),
       );
       expect(
-        tester.getTopLeft(find.text('Work chat')).dy,
-        lessThan(tester.getTopLeft(find.text('Main chat')).dy),
+        tester
+            .getTopLeft(find.byKey(const ValueKey('chat-list-folder-all')))
+            .dy,
+        lessThan(tester.getTopLeft(find.text('Work chat')).dy),
       );
+
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-all')));
+      await tester.pump();
 
       await _secondaryClick(
         tester,

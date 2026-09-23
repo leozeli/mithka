@@ -1039,9 +1039,8 @@ class _ChatListViewState extends State<ChatListView>
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
   final ValueNotifier<bool> _showScrollToTop = ValueNotifier(false);
 
-  /// Expanded section ids. Null is the main "All" list, which starts open.
-  /// Local-group expansion is persisted on [_folderGroups] instead.
-  final Set<int?> _expandedFolderIds = {null};
+  /// Local-group expansion is persisted on [_folderGroups]. Folder rows select
+  /// a filter instead of expanding, so they have no separate open set.
   final LocalFolderGroupStore _folderGroups = LocalFolderGroupStore();
   final Map<String, GlobalKey> _sectionHeaderKeys = {};
   final ValueNotifier<String?> _sectionDropHighlight = ValueNotifier<String?>(
@@ -1193,9 +1192,9 @@ class _ChatListViewState extends State<ChatListView>
     _syncScrollToTopVisibility(position);
   }
 
-  /// Pages an expanded folder when its last loaded row is near the viewport.
-  /// Folder sections sit above the main list, so the list-end [loadMore] only
-  /// covers All.
+  /// Pages the selected folder when its last loaded row is near the viewport.
+  /// The list-end [loadMore] covers that same active list; this catches a
+  /// short folder whose last row sits above the end of the scroll view.
   void _prefetchExpandedFoldersNearViewport() {
     if (!_foldersInMessageList) return;
     final slots = _directorySlots;
@@ -1828,11 +1827,6 @@ class _ChatListViewState extends State<ChatListView>
         _retryScrollToFirstUnread();
         return;
       }
-      if (_foldersInMessageList && !_expandedFolderIds.contains(null)) {
-        setState(() => _expandedFolderIds.add(null));
-        _retryScrollToFirstUnread();
-        return;
-      }
       final firstUnread = _firstUnreadScrollOffset();
       final target = _targetScrollOffsetForRequest(firstUnread);
       if (target == null ||
@@ -1979,7 +1973,6 @@ class _ChatListViewState extends State<ChatListView>
     final folderMode = theme.chatFolderDisplayMode;
     _foldersInMessageList =
         folderMode == ChatFolderDisplayMode.tabs && _model.filters.length > 1;
-    _pruneExpandedFolders();
     final controller = widget.controller;
     // The message list owns folder browsing in Tabs mode. Clear any rail the
     // navigation column is still holding.
@@ -1993,22 +1986,6 @@ class _ChatListViewState extends State<ChatListView>
         if (mounted && !_model.isAllFilter) {
           _model.selectFilter(_model.filters.first);
         }
-      });
-    }
-    if (_foldersInMessageList && !_model.isAllFilter) {
-      final previousFolderId = _model.selectedFilter.folderId;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_foldersInMessageList || _model.isAllFilter) return;
-        setState(() {
-          if (previousFolderId != null) {
-            _expandedFolderIds.add(previousFolderId);
-          }
-        });
-        if (previousFolderId != null) {
-          _model.prefetchFolder(previousFolderId);
-          unawaited(_folderGroups.expandGroupContaining(previousFolderId));
-        }
-        _model.selectAllFilter();
       });
     }
     return Stack(
@@ -2391,22 +2368,25 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  void _pruneExpandedFolders() {
-    final live = _model.filters.map((filter) => filter.folderId).toSet();
-    _expandedFolderIds.removeWhere((id) => !live.contains(id));
-  }
-
-  void _toggleFolderSection(ChatFilterOption filter) {
-    final id = filter.folderId;
-    final expand = !_expandedFolderIds.contains(id);
-    if (expand && id != null) _model.prefetchFolder(id);
+  /// Selects a folder or All inside the message list without paging the rail.
+  ///
+  /// The directory rows stay put. [ChatListViewModel.selectFilter] replaces
+  /// the chats under them, which is the old side-rail switch.
+  void _selectDirectoryFilter(ChatFilterOption filter) {
+    if (filter.folderId == _model.selectedFilter.folderId) return;
+    final folderId = filter.folderId;
+    if (folderId != null) {
+      _model.prefetchFolder(folderId);
+      unawaited(_folderGroups.expandGroupContaining(folderId));
+    }
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
     setState(() {
-      if (expand) {
-        _expandedFolderIds.add(id);
-      } else {
-        _expandedFolderIds.remove(id);
-      }
+      _folderPeek = null;
+      _openSwipeChat = null;
+      _archiveRevealed = false;
+      _refreshPullDistance = 0;
     });
+    _model.selectFilter(filter);
   }
 
   // MARK: - Search
@@ -2646,31 +2626,16 @@ class _ChatListViewState extends State<ChatListView>
             (geo.maxHeight / (rowHeight + 0.5)).ceil(),
           );
           _lastVisibleRows = visibleRows;
-          final allEntries = _model.chatListEntries(
+          final selectedEntries = _model.chatListEntries(
             communitiesEnabled: communitiesEnabled,
           );
+          final selectedFolderId = _model.selectedFilter.folderId;
+          final showingAll = selectedFolderId == null;
           final folderFilters = [
             for (final filter in _model.filters)
               if (!filter.isAll && filter.folderId != null) filter,
           ];
-          final expandedFolderIds = {for (final id in _expandedFolderIds) ?id};
-          final folderEntries = <int, List<CommunityChatListEntry>>{};
-          final folderEntryCounts = <int, int>{};
-          final loadingFolderIds = <int>{};
-          for (final filter in folderFilters) {
-            final id = filter.folderId!;
-            if (!expandedFolderIds.contains(id)) continue;
-            final entries = _model.chatListEntriesForFolder(
-              id,
-              communitiesEnabled: communitiesEnabled,
-            );
-            folderEntries[id] = entries;
-            folderEntryCounts[id] = entries.length;
-            if (entries.isEmpty && _model.isChatListLoading(id)) {
-              loadingFolderIds.add(id);
-            }
-          }
-          final hasArchive = _model.archived.isNotEmpty;
+          final hasArchive = showingAll && _model.archived.isNotEmpty;
           final showPulledDownArchive =
               hasArchive &&
               archiveMode == ArchivedChatsDisplayMode.pullDown &&
@@ -2679,29 +2644,26 @@ class _ChatListViewState extends State<ChatListView>
               hasArchive && archiveMode == ArchivedChatsDisplayMode.pullDown;
           final showInlineArchive = hasArchive && archiveMode.isInline;
           final inlineArchiveIndex = archiveMode.insertionIndex(
-            chatCount: allEntries.length,
+            chatCount: selectedEntries.length,
             visibleRows: visibleRows,
           );
-          final allExpanded = _expandedFolderIds.contains(null);
           final slots = buildChatListFolderDirectory(
             folderIds: _folderGroups.directoryFolderIds([
               for (final filter in folderFilters) filter.folderId!,
             ]),
-            expandedFolderIds: expandedFolderIds,
-            allExpanded: allExpanded,
-            folderEntryCounts: folderEntryCounts,
-            loadingFolderIds: loadingFolderIds,
-            allEntryCount: allEntries.length,
-            allLoading:
-                allExpanded &&
-                _model.isInitialLoading &&
-                allEntries.isEmpty &&
-                !showInlineArchive,
+            selectedFolderId: selectedFolderId,
+            selectedEntryCount: selectedEntries.length,
+            selectedLoading:
+                selectedEntries.isEmpty &&
+                !showInlineArchive &&
+                (showingAll
+                    ? _model.isInitialLoading
+                    : _model.isChatListLoading(selectedFolderId)),
+            selectedPlaceholderCount: showingAll ? visibleRows : 3,
             hasPullDownArchiveSlot: hasPullDownArchiveSlot,
-            hasFiltered: _model.filtered.isNotEmpty,
+            hasFiltered: showingAll && _model.filtered.isNotEmpty,
             showInlineArchive: showInlineArchive,
             inlineArchiveIndex: inlineArchiveIndex,
-            allPlaceholderCount: visibleRows,
             groups: _folderGroups.groups,
           );
           _directorySlots = slots;
@@ -2730,8 +2692,7 @@ class _ChatListViewState extends State<ChatListView>
                   slot,
                   rowHeight: rowHeight,
                   showPulledDownArchive: showPulledDownArchive,
-                  allEntries: allEntries,
-                  folderEntries: folderEntries,
+                  selectedEntries: selectedEntries,
                   filtersById: filtersById,
                   emptyHeight: math.max(180, geo.maxHeight * 0.45),
                 );
@@ -2747,8 +2708,7 @@ class _ChatListViewState extends State<ChatListView>
     ChatListDirectorySlot slot, {
     required double rowHeight,
     required bool showPulledDownArchive,
-    required List<CommunityChatListEntry> allEntries,
-    required Map<int, List<CommunityChatListEntry>> folderEntries,
+    required List<CommunityChatListEntry> selectedEntries,
     required Map<int, ChatFilterOption> filtersById,
     required double emptyHeight,
   }) {
@@ -2766,6 +2726,7 @@ class _ChatListViewState extends State<ChatListView>
           dragToken: 'g:${group.id}',
           title: group.title,
           expanded: slot.expanded,
+          showsChevron: true,
           indent: slot.indent,
           onTap: () => unawaited(_folderGroups.toggleExpanded(group.id)),
           actions: _localGroupActions(group),
@@ -2782,9 +2743,9 @@ class _ChatListViewState extends State<ChatListView>
           key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
           dragToken: slot.folderId == null ? null : 'f:${slot.folderId}',
           title: filter.title.l10n(context),
-          expanded: slot.expanded,
+          selected: slot.selected,
           indent: slot.indent,
-          onTap: () => _toggleFolderSection(filter),
+          onTap: () => _selectDirectoryFilter(filter),
           onSecondaryTap: filter.isAll
               ? null
               : () => unawaited(_editFolderAppearance(filter)),
@@ -2797,41 +2758,11 @@ class _ChatListViewState extends State<ChatListView>
       case ChatListDirectorySlotKind.archive:
         return _assistantRow();
       case ChatListDirectorySlotKind.empty:
-        if (slot.folderId == null) {
-          return SizedBox(height: emptyHeight, child: _emptyChatList());
-        }
-        final colors = context.colors;
-        return SizedBox(
-          height: chatListFolderHeaderExtent(context),
-          child: Padding(
-            padding: EdgeInsetsDirectional.only(
-              start:
-                  slot.indent +
-                  AppSpacing.xl +
-                  AppMetric.chatListAvatarSize() +
-                  AppSpacing.lg,
-            ),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(
-                AppStringKeys.chatListNoChats.l10n(context),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: AppTextSize.chatListPreview(),
-                  fontWeight: FontWeight.w400,
-                  color: colors.textTertiary,
-                ),
-              ),
-            ),
-          ),
-        );
+        return SizedBox(height: emptyHeight, child: _emptyChatList());
       case ChatListDirectorySlotKind.placeholder:
         return _directoryIndent(const _ChatRowPlaceholder(), slot.indent);
       case ChatListDirectorySlotKind.entry:
-        final entries = slot.folderId == null
-            ? allEntries
-            : folderEntries[slot.folderId] ?? const [];
+        final entries = selectedEntries;
         final entryIndex = slot.entryIndex ?? 0;
         if (entryIndex < 0 || entryIndex >= entries.length) {
           return const SizedBox.shrink();
@@ -2873,10 +2804,12 @@ class _ChatListViewState extends State<ChatListView>
   Widget _directoryHeader({
     required Key key,
     required String title,
-    required bool expanded,
     required double indent,
     required VoidCallback onTap,
     required List<DesktopRowAction> actions,
+    bool expanded = false,
+    bool showsChevron = false,
+    bool selected = false,
     String? dragToken,
     VoidCallback? onSecondaryTap,
   }) {
@@ -2890,6 +2823,8 @@ class _ChatListViewState extends State<ChatListView>
             key: key,
             title: title,
             expanded: expanded,
+            showsChevron: showsChevron,
+            selected: selected,
             onTap: onTap,
             onSecondaryTap: desktop ? null : onSecondaryTap,
           )
@@ -2899,6 +2834,7 @@ class _ChatListViewState extends State<ChatListView>
             token: token,
             title: title,
             expanded: expanded,
+            showsChevron: showsChevron,
             highlight: _sectionDropHighlight,
             resolveTarget: (global) =>
                 _sectionTargetAt(global, sections, token),
@@ -2909,6 +2845,8 @@ class _ChatListViewState extends State<ChatListView>
                 key: key,
                 title: title,
                 expanded: expanded,
+                showsChevron: showsChevron,
+                selected: selected,
                 draggable: sections.length > 1,
                 dragging: dragging,
                 highlighted: highlighted,
@@ -2917,9 +2855,12 @@ class _ChatListViewState extends State<ChatListView>
               );
             },
           );
-    return _directoryIndent(
-      DesktopRowActionRegion(actions: actions, child: header),
-      indent,
+    return ChatListSelectionHighlight(
+      selected: selected,
+      child: _directoryIndent(
+        DesktopRowActionRegion(actions: actions, child: header),
+        indent,
+      ),
     );
   }
 
