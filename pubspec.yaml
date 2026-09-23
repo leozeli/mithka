@@ -134,6 +134,12 @@ dependencies:
   webview_flutter_wkwebview: ^3.26.1
   local_auth: ^3.0.2
   app_links: ^7.2.1
+  # RSS detail renders feed HTML as widgets. The core package has no
+  # WebView plugin, so this path works on Linux desktop.
+  flutter_widget_from_html_core: ^0.17.4
+  # Mozilla Readability in Dart. Reader mode fetches the original page
+  # and extracts the article without an in-app browser.
+  reader_mode: ^0.2.3
 
 dev_dependencies:
   flutter_test:

@@ -117,7 +117,7 @@ class FeedItem {
   /// Short line for the timeline. Not the article.
   final String summary;
 
-  /// Detail-page text, with blank lines between paragraphs.
+  /// Detail-page source. RSS items keep feed HTML; Telegram stays plain text.
   final String body;
   final int publishedAt;
   final String? link;
@@ -132,7 +132,8 @@ class FeedItem {
   String get listSummary {
     final text = summary.trim();
     if (text.isNotEmpty) return text;
-    return feedListSummary(body);
+    final source = feedBodyIsHtml(body) ? _plainFromHtml(body) : body;
+    return feedListSummary(source);
   }
 
   /// Reader copy. A summary-only item still has something to show.
@@ -206,8 +207,32 @@ class FeedItem {
 /// Timeline cards stay short even when the article is a README.
 const int feedSummaryMaxChars = 180;
 
-/// Detail text stays long enough to read and short of a full repository file.
+/// Plain-text detail cap. HTML articles use [feedHtmlMaxChars].
 const int feedBodyMaxChars = 8000;
+
+/// Feed HTML kept for the detail card, short of an entire repository file.
+const int feedHtmlMaxChars = 24000;
+
+final _htmlStructure = RegExp(
+  r'<\s*/?\s*(p|br|h[1-6]|ul|ol|li|div|a|blockquote|pre|table|tr|td|strong|em|code|article|section)\b',
+  caseSensitive: false,
+);
+
+/// True when [text] still has the tags a reader should draw.
+bool feedBodyIsHtml(String text) => _htmlStructure.hasMatch(text);
+
+String _plainFromHtml(String text) {
+  return text
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
+      .replaceAll(
+        RegExp(r'</(p|div|h[1-6]|li|tr|blockquote)\s*>', caseSensitive: false),
+        '\n\n',
+      )
+      .replaceAll(RegExp(r'<[^>]+>'), ' ')
+      .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+      .trim();
+}
 
 /// First useful paragraph, clipped to [maxChars] on a word boundary.
 String feedListSummary(String plain, {int maxChars = feedSummaryMaxChars}) {

@@ -107,10 +107,10 @@ ParsedFeedEntry? _parseEntry(_XmlElement entry, int fallbackDate) {
         summaryHtml,
       ]) ??
       '';
-  final body = clipFeedBody(feedPlainText(bodyHtml));
+  final body = prepareFeedHtml(bodyHtml);
   final summarySource = _firstNonEmpty([description, summaryHtml]);
   final summary = feedListSummary(
-    summarySource == null ? body : feedPlainText(summarySource),
+    summarySource == null ? feedPlainText(body) : feedPlainText(summarySource),
   );
   final idText = _firstNonEmpty([
     _directChildText(entry, 'guid'),
@@ -179,6 +179,35 @@ String? _firstNonEmpty(List<String?> values) {
 }
 
 String _singleLine(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+
+/// Keeps structural HTML for the detail card and leaves plain text unchanged.
+String prepareFeedHtml(String raw) {
+  var text = decodeXmlEntities(raw).trim();
+  if (text.isEmpty) return '';
+  if (!feedBodyIsHtml(text)) return clipFeedBody(text);
+  text = text.replaceAll(
+    RegExp(
+      r'<(script|style|svg|picture)\b[^>]*>.*?</\1>',
+      caseSensitive: false,
+      dotAll: true,
+    ),
+    '',
+  );
+  text = text.replaceAll(RegExp(r'<img\b[^>]*>', caseSensitive: false), '');
+  text = text.trim();
+  if (text.isEmpty || !feedBodyIsHtml(text)) {
+    return clipFeedBody(feedPlainText(raw));
+  }
+  return clipFeedHtml(text);
+}
+
+String clipFeedHtml(String text, {int maxChars = feedHtmlMaxChars}) {
+  final trimmed = text.trim();
+  if (trimmed.length <= maxChars) return trimmed;
+  var end = trimmed.lastIndexOf('>', maxChars);
+  if (end < (maxChars * 0.5).round()) end = maxChars - 1;
+  return trimmed.substring(0, end + 1).trimRight();
+}
 
 String _truncate(String text, int maxChars) {
   if (text.length <= maxChars) return text;

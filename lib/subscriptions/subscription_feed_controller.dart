@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
+import 'article_reader.dart';
 import 'feed_models.dart';
 import 'rss_fetcher.dart';
 import 'rss_parser.dart';
@@ -23,17 +24,22 @@ class SubscriptionFeedController extends ChangeNotifier {
   SubscriptionFeedController({
     SubscriptionStore? store,
     RssFetcher? rssFetcher,
+    ArticleReader? articleReader,
     TdQuery? query,
     bool Function()? hasClient,
   }) : _store = store ?? SubscriptionStore(),
        _rss = rssFetcher ?? RssFetcher(),
        _ownsFetcher = rssFetcher == null,
+       _articleReader = articleReader ?? ArticleReader(),
+       _ownsReader = articleReader == null,
        _query = query ?? TdClient.shared.query,
        _hasClient = hasClient ?? (() => TdClient.shared.hasActiveClient);
 
   final SubscriptionStore _store;
   final RssFetcher _rss;
   final bool _ownsFetcher;
+  final ArticleReader _articleReader;
+  final bool _ownsReader;
   final TdQuery _query;
   final bool Function() _hasClient;
 
@@ -47,6 +53,9 @@ class SubscriptionFeedController extends ChangeNotifier {
   bool _disposed = false;
 
   SubscriptionStore get store => _store;
+
+  /// Reader-mode HTML for this tab session. Reopening an item does not refetch.
+  ArticleReader get articleReader => _articleReader;
   String? get selectedId => _selectedId;
   bool get loading => _loading;
   bool get isReady => _ready;
@@ -338,6 +347,7 @@ class SubscriptionFeedController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     if (_ownsFetcher) _rss.close();
+    if (_ownsReader) _articleReader.close();
     super.dispose();
   }
 }

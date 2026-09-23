@@ -3036,6 +3036,8 @@
     <string name="subscriptionsNoGroups">グループはまだありません</string>
     <string name="subscriptionsNoSourcesToAdd">追加できるソースがありません</string>
     <string name="subscriptionsOpenOriginal">元の記事を開く</string>
+    <string name="subscriptionsReaderFailed">読みやすい本文を抽出できませんでした</string>
+    <string name="subscriptionsReaderMode">リーダーモード</string>
     <string name="subscriptionsRefresh">更新</string>
     <string name="subscriptionsRemoveFromGroup">グループから外す</string>
     <string name="subscriptionsRenameGroup">名前を変更</string>
@@ -3045,6 +3047,7 @@
     <string name="subscriptionsRssUrlHint">https://example.com/feed.xml</string>
     <string name="subscriptionsRssUrlTitle">フィード URL</string>
     <string name="subscriptionsSearchChannels">チャンネルを検索</string>
+    <string name="subscriptionsShowFeed">フィードを表示</string>
     <string name="subscriptionsSources">ソース</string>
     <string name="subscriptionsTelegramFailed">このチャットのメッセージを読み込めませんでした</string>
     <string name="subscriptionsTimelineEmpty">まだ項目がありません</string>

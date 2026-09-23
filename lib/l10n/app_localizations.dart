@@ -2735,6 +2735,8 @@ abstract final class AppStringKeys {
   static const subscriptionsNoGroups = 'subscriptionsNoGroups';
   static const subscriptionsNoSourcesToAdd = 'subscriptionsNoSourcesToAdd';
   static const subscriptionsOpenOriginal = 'subscriptionsOpenOriginal';
+  static const subscriptionsReaderFailed = 'subscriptionsReaderFailed';
+  static const subscriptionsReaderMode = 'subscriptionsReaderMode';
   static const subscriptionsRefresh = 'subscriptionsRefresh';
   static const subscriptionsRemoveFromGroup = 'subscriptionsRemoveFromGroup';
   static const subscriptionsRenameGroup = 'subscriptionsRenameGroup';
@@ -2744,6 +2746,7 @@ abstract final class AppStringKeys {
   static const subscriptionsRssUrlHint = 'subscriptionsRssUrlHint';
   static const subscriptionsRssUrlTitle = 'subscriptionsRssUrlTitle';
   static const subscriptionsSearchChannels = 'subscriptionsSearchChannels';
+  static const subscriptionsShowFeed = 'subscriptionsShowFeed';
   static const subscriptionsSources = 'subscriptionsSources';
   static const subscriptionsTelegramFailed = 'subscriptionsTelegramFailed';
   static const subscriptionsTimelineEmpty = 'subscriptionsTimelineEmpty';

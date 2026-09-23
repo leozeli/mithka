@@ -3036,6 +3036,8 @@
     <string name="subscriptionsNoGroups">還沒有群組</string>
     <string name="subscriptionsNoSourcesToAdd">沒有可加入的訂閱來源</string>
     <string name="subscriptionsOpenOriginal">開啟原文</string>
+    <string name="subscriptionsReaderFailed">無法提取可讀正文</string>
+    <string name="subscriptionsReaderMode">閱讀模式</string>
     <string name="subscriptionsRefresh">重新整理</string>
     <string name="subscriptionsRemoveFromGroup">移出群組</string>
     <string name="subscriptionsRenameGroup">重新命名</string>
@@ -3045,6 +3047,7 @@
     <string name="subscriptionsRssUrlHint">https://example.com/feed.xml</string>
     <string name="subscriptionsRssUrlTitle">訂閱網址</string>
     <string name="subscriptionsSearchChannels">搜尋頻道</string>
+    <string name="subscriptionsShowFeed">顯示訂閱內容</string>
     <string name="subscriptionsSources">訂閱來源</string>
     <string name="subscriptionsTelegramFailed">無法載入這個聊天的訊息</string>
     <string name="subscriptionsTimelineEmpty">這裡還沒有內容</string>

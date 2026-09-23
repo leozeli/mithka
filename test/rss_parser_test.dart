@@ -32,7 +32,9 @@ void main() {
     expect(feed.entries.first.id, 'a-1');
     expect(feed.entries.first.link, 'https://example.com/a');
     expect(feed.entries.first.summary, 'First line');
-    expect(feed.entries.first.body, 'First line\n\nSecond');
+    expect(feed.entries.first.body, contains('<p>'));
+    expect(feed.entries.first.body, contains('First line'));
+    expect(feed.entries.first.body, contains('Second'));
     expect(
       feed.entries.first.publishedAt,
       DateTime.utc(2026, 9, 23, 2, 29).millisecondsSinceEpoch ~/ 1000,
@@ -63,7 +65,8 @@ void main() {
     expect(feed.entries.single.id, 'urn:1');
     expect(feed.entries.single.link, 'https://example.com/e');
     expect(feed.entries.single.summary, 'Hi');
-    expect(feed.entries.single.body, 'Hi');
+    expect(feed.entries.single.body, contains('<p>'));
+    expect(feed.entries.single.body, contains('Hi'));
     expect(
       feed.entries.single.publishedAt,
       DateTime.utc(2026, 9, 23, 2, 29).millisecondsSinceEpoch ~/ 1000,
@@ -140,19 +143,21 @@ void main() {
     expect(trending.summary, 'A framework for building agentic apps.');
     expect(trending.summary.length, lessThanOrEqualTo(feedSummaryMaxChars));
     expect(trending.summary.contains('Alpha feature'), isFalse);
-    expect(trending.body, contains('First section explains the tool.'));
-    expect(trending.body, contains('\n\n'));
-    expect(trending.body, contains('• Alpha feature'));
-    expect(trending.body, contains('• Beta feature'));
+    expect(trending.body, contains('<h1>'));
     expect(trending.body, contains('Readme'));
-    expect(trending.body.length, lessThanOrEqualTo(feedBodyMaxChars));
+    expect(trending.body, contains('First section explains the tool.'));
+    expect(trending.body, contains('<li>'));
+    expect(trending.body, contains('Alpha feature'));
+    expect(trending.body, contains('Beta feature'));
+    expect(trending.body.toLowerCase().contains('<img'), isFalse);
+    expect(trending.body.length, lessThanOrEqualTo(feedHtmlMaxChars));
 
     final split = feed.entries.firstWhere(
       (entry) => entry.title == 'Split fields',
     );
     expect(split.summary, 'Card blurb from the description.');
+    expect(split.body, contains('<p>'));
     expect(split.body, contains('The encoded article continues here.'));
-    expect(split.body, contains('\n\n'));
   });
 
   test('canonicalizes feed URLs', () {

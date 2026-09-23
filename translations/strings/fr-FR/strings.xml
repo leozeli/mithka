@@ -3044,6 +3044,8 @@
     <string name="subscriptionsNoGroups">Aucun groupe</string>
     <string name="subscriptionsNoSourcesToAdd">Aucune source à ajouter</string>
     <string name="subscriptionsOpenOriginal">Ouvrir l’original</string>
+    <string name="subscriptionsReaderFailed">Impossible d’extraire un article lisible</string>
+    <string name="subscriptionsReaderMode">Mode lecture</string>
     <string name="subscriptionsRefresh">Actualiser</string>
     <string name="subscriptionsRemoveFromGroup">Retirer du groupe</string>
     <string name="subscriptionsRenameGroup">Renommer</string>
@@ -3053,6 +3055,7 @@
     <string name="subscriptionsRssUrlHint">https://example.com/feed.xml</string>
     <string name="subscriptionsRssUrlTitle">Adresse du flux</string>
     <string name="subscriptionsSearchChannels">Rechercher des chaînes</string>
+    <string name="subscriptionsShowFeed">Afficher le flux</string>
     <string name="subscriptionsSources">Sources</string>
     <string name="subscriptionsTelegramFailed">Impossible de charger les messages de cette discussion</string>
     <string name="subscriptionsTimelineEmpty">Aucun élément pour le moment</string>

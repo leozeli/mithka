@@ -243,8 +243,8 @@ void main() {
     expect(store.subscriptions, hasLength(2));
     final rss = store.itemsFor('rss:https://example.com/feed').single;
     expect(rss.summary, 'Short blurb.');
+    expect(rss.body, contains('<p>'));
     expect(rss.body, contains('Article body paragraph.'));
-    expect(rss.body, contains('\n\n'));
     expect(rss.summary.contains('Article body'), isFalse);
   });
 

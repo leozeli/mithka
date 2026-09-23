@@ -26,7 +26,9 @@ import '../l10n/app_localizations.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_theme.dart';
 import '../theme/date_text.dart';
+import 'article_reader.dart';
 import 'feed_models.dart';
+import 'subscription_article_body.dart';
 import 'subscription_channel_picker.dart';
 import 'subscription_feed_controller.dart';
 
@@ -404,7 +406,10 @@ class _SubscriptionsTimelineState extends State<SubscriptionsTimeline>
     if (widget.showSourcesButton) {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => SubscriptionItemPage(item: item),
+          builder: (_) => SubscriptionItemPage(
+            item: item,
+            reader: widget.controller.articleReader,
+          ),
         ),
       );
       return;
@@ -418,7 +423,9 @@ class _SubscriptionsTimelineState extends State<SubscriptionsTimeline>
     if (_openId != null && opened == null) _openId = null;
     if (opened != null) {
       return SubscriptionItemPage(
+        key: ValueKey(opened.id),
         item: opened,
+        reader: widget.controller.articleReader,
         onBack: () => setState(() => _openId = null),
       );
     }
@@ -515,19 +522,66 @@ class _SubscriptionsTimelineState extends State<SubscriptionsTimeline>
   }
 }
 
-class SubscriptionItemPage extends StatelessWidget {
-  const SubscriptionItemPage({super.key, required this.item, this.onBack});
+class SubscriptionItemPage extends StatefulWidget {
+  const SubscriptionItemPage({
+    super.key,
+    required this.item,
+    this.onBack,
+    this.reader,
+  });
 
   final FeedItem item;
   final VoidCallback? onBack;
 
+  /// Session cache for reader mode. Telegram items leave this unused.
+  final ArticleReader? reader;
+
   static const readerMaxWidth = 640.0;
+
+  @override
+  State<SubscriptionItemPage> createState() => _SubscriptionItemPageState();
+}
+
+class _SubscriptionItemPageState extends State<SubscriptionItemPage> {
+  bool _readerOn = false;
+  bool _loadingReader = false;
+  String? _readerHtml;
+
+  FeedItem get item => widget.item;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreReader();
+  }
+
+  @override
+  void didUpdateWidget(SubscriptionItemPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.item.id != widget.item.id) {
+      _loadingReader = false;
+      _restoreReader();
+    }
+  }
+
+  void _restoreReader() {
+    final cached = widget.reader?.cached(widget.item.id);
+    _readerOn = cached != null;
+    _readerHtml = cached;
+  }
+
+  bool get _canReadPage =>
+      widget.reader != null && !item.opensInChat && item.hasLink;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final title = item.title.trim().isEmpty ? item.sourceName : item.title;
-    final body = item.articleBody;
+    final feedBody = item.articleBody;
+    final showingReader =
+        _readerOn && (_readerHtml?.trim().isNotEmpty ?? false);
+    final body = showingReader ? _readerHtml!.trim() : feedBody;
+    final html = showingReader || (!item.opensInChat && feedBodyIsHtml(body));
     final domain = item.siteLabel;
     final meta = [
       if (item.sourceName.trim().isNotEmpty) item.sourceName.trim(),
@@ -542,13 +596,16 @@ class SubscriptionItemPage extends StatelessWidget {
           NavHeader(
             title: item.sourceName,
             localizeTitle: false,
-            onBack: onBack ?? () => Navigator.of(context).maybePop(),
+            onBack: widget.onBack ?? () => Navigator.of(context).maybePop(),
           ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final inset = constraints.maxWidth > readerMaxWidth
-                    ? (constraints.maxWidth - readerMaxWidth) / 2
+                final inset =
+                    constraints.maxWidth > SubscriptionItemPage.readerMaxWidth
+                    ? (constraints.maxWidth -
+                              SubscriptionItemPage.readerMaxWidth) /
+                          2
                     : 0.0;
                 return ListView(
                   padding: EdgeInsets.fromLTRB(
@@ -589,13 +646,23 @@ class SubscriptionItemPage extends StatelessWidget {
                                 onTap: () => unawaited(_openOriginal(context)),
                               ),
                             ],
+                            if (_canReadPage) ...[
+                              const SizedBox(height: 8),
+                              _ReaderModeButton(
+                                label: _readerOn
+                                    ? AppStringKeys.subscriptionsShowFeed
+                                    : AppStringKeys.subscriptionsReaderMode,
+                                busy: _loadingReader,
+                                active: _readerOn,
+                                onTap: () => unawaited(_toggleReader()),
+                              ),
+                            ],
                             if (body.isNotEmpty) ...[
                               const SizedBox(height: 20),
-                              SelectableText(
-                                body,
-                                style: AppTextStyle.body(
-                                  c.textPrimary,
-                                ).copyWith(height: 1.45),
+                              SubscriptionArticleBody(
+                                text: body,
+                                html: html,
+                                onOpenLink: (url) => openLink(context, url),
                               ),
                             ],
                           ],
@@ -610,6 +677,44 @@ class SubscriptionItemPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _toggleReader() async {
+    if (_loadingReader) return;
+    if (_readerOn) {
+      setState(() => _readerOn = false);
+      return;
+    }
+    final reader = widget.reader;
+    final link = item.link?.trim();
+    if (reader == null || link == null || link.isEmpty) return;
+    final cached = reader.cached(item.id);
+    if (cached != null) {
+      setState(() {
+        _readerHtml = cached;
+        _readerOn = true;
+      });
+      return;
+    }
+    final uri = Uri.tryParse(link);
+    if (uri == null) {
+      showToast(context, AppStringKeys.subscriptionsReaderFailed);
+      return;
+    }
+    setState(() => _loadingReader = true);
+    try {
+      final html = await reader.read(itemId: item.id, url: uri);
+      if (!mounted) return;
+      setState(() {
+        _readerHtml = html;
+        _readerOn = true;
+        _loadingReader = false;
+      });
+    } on ArticleReadException {
+      if (!mounted) return;
+      setState(() => _loadingReader = false);
+      showToast(context, AppStringKeys.subscriptionsReaderFailed);
+    }
   }
 
   Future<void> _openOriginal(BuildContext context) async {
@@ -1203,6 +1308,62 @@ String? _rowMeta(FeedItem item, {required bool showSource}) {
   ];
   if (parts.isEmpty) return null;
   return parts.join(' · ');
+}
+
+class _ReaderModeButton extends StatelessWidget {
+  const _ReaderModeButton({
+    required this.label,
+    required this.busy,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final border = active ? AppTheme.brand : c.divider;
+    return AppInteractiveSurface(
+      key: const ValueKey('subscriptions-reader-mode'),
+      semanticLabel: label.l10n(context),
+      isButton: true,
+      borderRadius: BorderRadius.circular(AppRadius.card),
+      onTap: busy ? null : onTap,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: c.card,
+          borderRadius: BorderRadius.circular(AppRadius.card),
+          border: Border.all(color: border),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: busy
+              ? Center(
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                )
+              : Text(
+                  label.l10n(context),
+                  textAlign: TextAlign.center,
+                  style: AppTextStyle.body(
+                    c.textPrimary,
+                    weight: AppTextWeight.semibold,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
 }
 
 class _OpenOriginalButton extends StatelessWidget {

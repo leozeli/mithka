@@ -3036,6 +3036,8 @@
     <string name="subscriptionsNoGroups">还没有分组</string>
     <string name="subscriptionsNoSourcesToAdd">没有可添加的订阅源</string>
     <string name="subscriptionsOpenOriginal">打开原文</string>
+    <string name="subscriptionsReaderFailed">无法提取可读正文</string>
+    <string name="subscriptionsReaderMode">阅读模式</string>
     <string name="subscriptionsRefresh">刷新</string>
     <string name="subscriptionsRemoveFromGroup">移出分组</string>
     <string name="subscriptionsRenameGroup">重命名</string>
@@ -3045,6 +3047,7 @@
     <string name="subscriptionsRssUrlHint">https://example.com/feed.xml</string>
     <string name="subscriptionsRssUrlTitle">订阅地址</string>
     <string name="subscriptionsSearchChannels">搜索频道</string>
+    <string name="subscriptionsShowFeed">显示订阅内容</string>
     <string name="subscriptionsSources">订阅源</string>
     <string name="subscriptionsTelegramFailed">无法加载这个聊天的消息</string>
     <string name="subscriptionsTimelineEmpty">这里还没有内容</string>

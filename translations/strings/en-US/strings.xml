@@ -3044,6 +3044,8 @@
     <string name="subscriptionsNoGroups">No groups yet</string>
     <string name="subscriptionsNoSourcesToAdd">No sources to add</string>
     <string name="subscriptionsOpenOriginal">Open original</string>
+    <string name="subscriptionsReaderFailed">Couldn’t extract a readable article</string>
+    <string name="subscriptionsReaderMode">Reader mode</string>
     <string name="subscriptionsRefresh">Refresh</string>
     <string name="subscriptionsRemoveFromGroup">Remove from group</string>
     <string name="subscriptionsRenameGroup">Rename</string>
@@ -3053,6 +3055,7 @@
     <string name="subscriptionsRssUrlHint">https://example.com/feed.xml</string>
     <string name="subscriptionsRssUrlTitle">Feed URL</string>
     <string name="subscriptionsSearchChannels">Search channels</string>
+    <string name="subscriptionsShowFeed">Show feed</string>
     <string name="subscriptionsSources">Sources</string>
     <string name="subscriptionsTelegramFailed">Couldn’t load messages from this chat</string>
     <string name="subscriptionsTimelineEmpty">Nothing in this feed yet</string>
