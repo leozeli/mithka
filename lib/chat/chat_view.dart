@@ -42,6 +42,7 @@ import '../components/photo_avatar.dart';
 import '../components/toast.dart';
 import '../components/ui_components.dart';
 import '../media/app_asset_picker.dart';
+import '../media/linux_chat_video_playback.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
 import '../profile/profile_detail_view.dart';
@@ -4588,7 +4589,10 @@ class _ChatViewState extends State<ChatView> {
   void _playVideo(ChatMessage message, {bool muted = false}) {
     if (message.video == null) return;
     final session = _videoSession(message);
-    if (supportsDesktopVideoWindows) {
+    if (chatVideoOpensDetachedWindow(
+      desktopWindowsSupported: supportsDesktopVideoWindows,
+      platform: defaultTargetPlatform,
+    )) {
       unawaited(_openDesktopVideoWindow(session, muted: muted));
       return;
     }
