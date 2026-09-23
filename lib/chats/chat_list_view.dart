@@ -1043,6 +1043,10 @@ class _ChatListViewState extends State<ChatListView>
   /// Local-group expansion is persisted on [_folderGroups] instead.
   final Set<int?> _expandedFolderIds = {null};
   final LocalFolderGroupStore _folderGroups = LocalFolderGroupStore();
+  final Map<String, GlobalKey> _sectionHeaderKeys = {};
+  final ValueNotifier<String?> _sectionDropHighlight = ValueNotifier<String?>(
+    null,
+  );
   int _folderGroupBindGeneration = 0;
   List<ChatFilterOption>? _lastPrunedFilters;
 
@@ -1234,6 +1238,7 @@ class _ChatListViewState extends State<ChatListView>
     widget.controller?.clearSideFolders(this);
     _folderGroups.removeListener(_onFolderGroupsChanged);
     _folderGroups.dispose();
+    _sectionDropHighlight.dispose();
     _dismissDesktopChatMenu();
     _dismissDesktopPlusMenu();
     _userSub?.cancel();
@@ -2758,6 +2763,7 @@ class _ChatListViewState extends State<ChatListView>
         if (group == null) return const SizedBox.shrink();
         return _directoryHeader(
           key: ValueKey('chat-list-group-${group.id}'),
+          dragToken: 'g:${group.id}',
           title: group.title,
           expanded: slot.expanded,
           indent: slot.indent,
@@ -2774,6 +2780,7 @@ class _ChatListViewState extends State<ChatListView>
         if (filter == null) return const SizedBox.shrink();
         return _directoryHeader(
           key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
+          dragToken: slot.folderId == null ? null : 'f:${slot.folderId}',
           title: filter.title.l10n(context),
           expanded: slot.expanded,
           indent: slot.indent,
@@ -2870,21 +2877,126 @@ class _ChatListViewState extends State<ChatListView>
     required double indent,
     required VoidCallback onTap,
     required List<DesktopRowAction> actions,
+    String? dragToken,
     VoidCallback? onSecondaryTap,
   }) {
     final desktop = !kIsWeb && isDesktopTargetPlatform();
+    final token = dragToken;
+    final sections = token == null
+        ? const <({GlobalKey key, String token})>[]
+        : _reorderSections(token);
+    final header = token == null
+        ? ChatListFolderHeader(
+            key: key,
+            title: title,
+            expanded: expanded,
+            onTap: onTap,
+            onSecondaryTap: desktop ? null : onSecondaryTap,
+          )
+        : ChatListSectionDrag(
+            key: _sectionHeaderKey(token),
+            enabled: sections.length > 1,
+            token: token,
+            title: title,
+            expanded: expanded,
+            highlight: _sectionDropHighlight,
+            resolveTarget: (global) =>
+                _sectionTargetAt(global, sections, token),
+            onDrop: (target) => _dropSection(token, target),
+            onTap: onTap,
+            builder: ({required bool dragging, required bool highlighted}) {
+              return ChatListFolderHeader(
+                key: key,
+                title: title,
+                expanded: expanded,
+                draggable: sections.length > 1,
+                dragging: dragging,
+                highlighted: highlighted,
+                onTap: onTap,
+                onSecondaryTap: desktop ? null : onSecondaryTap,
+              );
+            },
+          );
     return _directoryIndent(
-      DesktopRowActionRegion(
-        actions: actions,
-        child: ChatListFolderHeader(
-          key: key,
-          title: title,
-          expanded: expanded,
-          onTap: onTap,
-          onSecondaryTap: desktop ? null : onSecondaryTap,
-        ),
-      ),
+      DesktopRowActionRegion(actions: actions, child: header),
       indent,
+    );
+  }
+
+  GlobalKey _sectionHeaderKey(String token) =>
+      _sectionHeaderKeys.putIfAbsent(token, GlobalKey.new);
+
+  List<({GlobalKey key, String token})> _reorderSections(String token) {
+    if (token.startsWith('g:')) {
+      return [
+        for (final group in _folderGroups.groups)
+          (key: _sectionHeaderKey('g:${group.id}'), token: 'g:${group.id}'),
+      ];
+    }
+    if (!token.startsWith('f:')) return const [];
+    final folderId = int.tryParse(token.substring(2));
+    if (folderId == null) return const [];
+    final group = _folderGroups.groupContaining(folderId);
+    final ids = group == null
+        ? _folderGroups.ungroupedDisplayOrder(_telegramFolderIds)
+        : group.childFolderIds;
+    return [
+      for (final id in ids) (key: _sectionHeaderKey('f:$id'), token: 'f:$id'),
+    ];
+  }
+
+  /// The peer header whose vertical band contains [global].
+  ///
+  /// Bands meet halfway between header centers, so a drop on an expanded
+  /// section still lands on that section's header. The dragged row itself is
+  /// not a target.
+  String? _sectionTargetAt(
+    Offset global,
+    List<({GlobalKey key, String token})> sections,
+    String source,
+  ) {
+    final boxes = <({String token, Rect rect})>[];
+    for (final section in sections) {
+      final box = section.key.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      boxes.add((token: section.token, rect: topLeft & box.size));
+    }
+    if (boxes.length < 2) return null;
+    boxes.sort((a, b) => a.rect.top.compareTo(b.rect.top));
+    final left = boxes.map((box) => box.rect.left).reduce(math.min) - 24;
+    final right = boxes.map((box) => box.rect.right).reduce(math.max) + 24;
+    if (global.dx < left || global.dx > right) return null;
+    for (var i = 0; i < boxes.length; i++) {
+      final above = i == 0
+          ? double.negativeInfinity
+          : (boxes[i - 1].rect.center.dy + boxes[i].rect.center.dy) / 2;
+      final below = i == boxes.length - 1
+          ? double.infinity
+          : (boxes[i].rect.center.dy + boxes[i + 1].rect.center.dy) / 2;
+      if (global.dy < above || global.dy >= below) continue;
+      final token = boxes[i].token;
+      return token == source ? null : token;
+    }
+    return null;
+  }
+
+  void _dropSection(String source, String target) {
+    if (source == target) return;
+    if (source.startsWith('g:') && target.startsWith('g:')) {
+      final index = _folderGroups.groups.indexWhere(
+        (group) => group.id == target.substring(2),
+      );
+      if (index < 0) return;
+      unawaited(_folderGroups.moveGroupTo(source.substring(2), index));
+      return;
+    }
+    if (!source.startsWith('f:') || !target.startsWith('f:')) return;
+    final folderId = int.tryParse(source.substring(2));
+    final targetId = int.tryParse(target.substring(2));
+    if (folderId == null || targetId == null) return;
+    unawaited(
+      _folderGroups.moveFolderTo(folderId, targetId, _telegramFolderIds),
     );
   }
 

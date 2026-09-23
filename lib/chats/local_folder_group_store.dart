@@ -352,6 +352,55 @@ class LocalFolderGroupStore extends ChangeNotifier {
     });
   }
 
+  /// Moves [id] into the slot the group at [index] currently occupies.
+  ///
+  /// [index] is the target's index before the move. Dragging onto a header
+  /// uses that header's index, so the dragged group lands in its place.
+  Future<bool> moveGroupTo(String id, int index) {
+    return _serialized(() async {
+      final from = _indexOf(id);
+      if (from < 0 || index < 0 || index >= _groups.length || from == index) {
+        return false;
+      }
+      final group = _groups.removeAt(from);
+      _groups.insert(index, group);
+      await _persist();
+      notifyListeners();
+      return true;
+    });
+  }
+
+  /// Moves [folderId] into the slot [targetFolderId] currently occupies.
+  ///
+  /// Both folders must already share a section. Dragging does not change
+  /// which local group a folder belongs to, and it does not call Telegram.
+  Future<bool> moveFolderTo(
+    int folderId,
+    int targetFolderId,
+    List<int> telegramFolderIds,
+  ) {
+    return _serialized(() async {
+      if (folderId == targetFolderId) return false;
+      final source = groupContaining(folderId);
+      final target = groupContaining(targetFolderId);
+      if (source?.id != target?.id) return false;
+      if (source != null) {
+        final index = _indexOf(source.id);
+        if (index < 0) return false;
+        final children = List<int>.of(_groups[index].childFolderIds);
+        if (!_placeAt(children, folderId, targetFolderId)) return false;
+        _groups[index] = _groups[index].copyWith(childFolderIds: children);
+      } else {
+        final order = ungroupedDisplayOrder(telegramFolderIds);
+        if (!_placeAt(order, folderId, targetFolderId)) return false;
+        _setUngroupedOrder(order);
+      }
+      await _persist();
+      notifyListeners();
+      return true;
+    });
+  }
+
   /// Ensures the group that owns [folderId] is expanded so its section shows.
   Future<void> expandGroupContaining(int folderId) async {
     final group = groupContaining(folderId);
@@ -476,6 +525,17 @@ class LocalFolderGroupStore extends ChangeNotifier {
     if (next < 0 || next >= ids.length) return false;
     final moved = ids.removeAt(index);
     ids.insert(next, moved);
+    return true;
+  }
+
+  /// [targetId]'s index is read before the removal, then used as the insert
+  /// slot, so the moved id takes the target's place.
+  bool _placeAt(List<int> ids, int id, int targetId) {
+    final from = ids.indexOf(id);
+    final to = ids.indexOf(targetId);
+    if (from < 0 || to < 0 || from == to) return false;
+    final moved = ids.removeAt(from);
+    ids.insert(to, moved);
     return true;
   }
 }

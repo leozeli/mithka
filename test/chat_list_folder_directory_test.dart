@@ -471,6 +471,21 @@ void main() {
         ),
       );
 
+      final personal = find.byKey(const ValueKey('chat-list-folder-4'));
+      final work = find.byKey(const ValueKey('chat-list-folder-3'));
+      final drag = await tester.startGesture(
+        tester.getCenter(personal),
+        kind: PointerDeviceKind.mouse,
+      );
+      await drag.moveTo(tester.getCenter(work));
+      await tester.pump();
+      await drag.up();
+      await tester.pump();
+      expect(
+        tester.getTopLeft(work).dy,
+        lessThan(tester.getTopLeft(personal).dy),
+      );
+
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 6));
     },

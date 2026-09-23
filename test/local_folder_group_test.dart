@@ -117,14 +117,22 @@ void main() {
         expect(await store.moveFolderBy(4, -1, const [7, 3, 9, 4]), isTrue);
         expect(store.ungroupedDisplayOrder(const [7, 3, 9, 4]), [4, 9]);
         expect(store.directoryFolderIds(const [7, 3, 9, 4]), [4, 9, 3, 7]);
+        expect(await store.moveGroupTo(first.id, 0), isTrue);
+        expect(store.groups.map((group) => group.title), ['A', 'B']);
+        expect(await store.moveGroupTo(first.id, 0), isFalse);
+        expect(await store.moveFolderTo(7, 3, const [7, 3, 9, 4]), isTrue);
+        expect(store.groupFor(first.id)?.childFolderIds, [7, 3]);
+        expect(await store.moveFolderTo(7, 9, const [7, 3, 9, 4]), isFalse);
+        expect(await store.moveFolderTo(9, 4, const [7, 3, 9, 4]), isTrue);
+        expect(store.ungroupedDisplayOrder(const [7, 3, 9, 4]), [9, 4]);
 
         final reloaded = LocalFolderGroupStore();
         expect(await reloaded.bind(slot: 1, userId: 11), isTrue);
-        expect(reloaded.groups.map((group) => group.title), ['B', 'A']);
-        expect(reloaded.groupFor(first.id)?.childFolderIds, [3, 7]);
+        expect(reloaded.groups.map((group) => group.title), ['A', 'B']);
+        expect(reloaded.groupFor(first.id)?.childFolderIds, [7, 3]);
         expect(reloaded.ungroupedDisplayOrder(const [7, 3, 9, 4, 5]), [
-          4,
           9,
+          4,
           5,
         ]);
       },
