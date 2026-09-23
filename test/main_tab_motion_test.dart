@@ -303,12 +303,12 @@ void main() {
       findsOneWidget,
     );
 
-    // Move from Messages to Channels. On a tablet this replaces the detail
-    // pane as well as the sidebar root.
+    // Move from Messages to Subscriptions. On a tablet this replaces the
+    // detail pane as well as the sidebar root.
     await tester.tapAt(const Offset(164, 770));
     await tester.pump();
 
-    final detail = find.byKey(const ValueKey('tablet-channel-empty'));
+    final detail = find.byKey(const ValueKey('tablet-subscriptions-timeline'));
     expect(detail, findsOneWidget);
 
     final surface = find.byKey(DetailContentReveal.surfaceKey);
