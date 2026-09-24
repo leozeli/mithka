@@ -12,6 +12,7 @@ import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/ui_components.dart';
 import '../l10n/app_localizations.dart';
+import '../platform/clipboard_image.dart';
 import '../tdlib/td_image_loader.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_theme.dart';
@@ -309,11 +310,10 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
     }
   }
 
-  Future<void> _copyCurrentPath() async {
-    final path = _items[_index].path;
-    if (path == null) return;
-    await Clipboard.setData(ClipboardData(text: path));
-    _showStatus(AppStrings.t(AppStringKeys.qrScannerCopied));
+  Future<void> _copyCurrentImage() async {
+    final result = await copyImageFileToClipboard(_items[_index].path);
+    if (!mounted) return;
+    _showStatus(AppStrings.t(clipboardImageCopyFeedbackKey(result)));
     if (mounted) setState(() => _showMore = false);
   }
 
@@ -423,7 +423,7 @@ class _DesktopImagePreviewState extends State<_DesktopImagePreview> {
               bottom: 62,
               child: _PreviewMoreMenu(
                 dark: _dark,
-                onCopy: _copyCurrentPath,
+                onCopy: _copyCurrentImage,
                 onClose: implementation.closeCurrentDesktopImagePreviewWindow,
               ),
             ),
@@ -774,6 +774,7 @@ class _PreviewMoreMenu extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _PreviewMoreAction(
+          key: const ValueKey('desktop-image-preview-copy'),
           icon: HeroAppIcons.clipboard,
           label: AppStrings.t(AppStringKeys.messageActionCopy),
           dark: dark,
@@ -792,6 +793,7 @@ class _PreviewMoreMenu extends StatelessWidget {
 
 class _PreviewMoreAction extends StatelessWidget {
   const _PreviewMoreAction({
+    super.key,
     required this.icon,
     required this.label,
     required this.dark,

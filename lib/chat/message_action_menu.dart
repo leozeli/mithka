@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import '../components/app_icons.dart';
 import '../platform/adaptive_platform.dart';
+import '../platform/clipboard_image.dart';
 import '../settings/translation_controller.dart';
 import '../tdlib/td_models.dart';
 import '../theme/app_motion.dart';
@@ -26,6 +27,7 @@ import 'quick_reaction_choice.dart';
 
 enum MessageAction {
   copy(HeroAppIcons.file, AppStringKeys.messageActionCopy),
+  copyImage(HeroAppIcons.clipboard, AppStringKeys.messageActionCopyImage),
   edit(HeroAppIcons.pen, AppStringKeys.messageActionEdit),
   suggestOffer(HeroAppIcons.penToSquare, AppStringKeys.suggestedPostEditOffer),
   translate(HeroAppIcons.language, AppStringKeys.messageActionTranslate),
@@ -66,6 +68,19 @@ enum MessageAction {
 enum MessageActionSource { normal, video }
 
 enum MessageActionMenuLayout { adaptive, grid, vertical }
+
+/// Text the user actually wrote. A photo with no caption stores the
+/// "[Image]" placeholder in [ChatMessage.text]; copying that string is not
+/// copying the picture.
+bool messageHasUserCopyableText(ChatMessage message) {
+  final text = message.text.trim();
+  if (text.isEmpty) return false;
+  if (message.isPhoto &&
+      text == AppStrings.t(AppStringKeys.composerImagePreview)) {
+    return false;
+  }
+  return true;
+}
 
 class QuickReactionBar extends StatelessWidget {
   const QuickReactionBar({
@@ -451,12 +466,18 @@ class MessageActionMenu extends StatelessWidget {
       message.contentType == 'messageDocument' ||
       message.contentType == 'messageChecklist';
 
-  bool get _hasCopyableText => message.text.trim().isNotEmpty;
+  bool get _hasCopyableText => messageHasUserCopyableText(message);
+
+  bool _canCopyImage(TargetPlatform platform) =>
+      message.isPhoto &&
+      message.image != null &&
+      clipboardImageCopyIsSupported(platform);
 
   List<MessageAction> _actions(
     TranslationController translation, {
-    required bool isDesktop,
+    required TargetPlatform platform,
   }) {
+    final isDesktop = isDesktopTargetPlatform(platform);
     if (message.isCall) return [MessageAction.delete];
     final result = <MessageAction>[];
     if (_hasCopyableText) {
@@ -475,6 +496,9 @@ class MessageActionMenu extends StatelessWidget {
       if (translation.enabled && allowTranslation) {
         result.add(MessageAction.translate);
       }
+    }
+    if (_canCopyImage(platform)) {
+      result.add(MessageAction.copyImage);
     }
     if (!_hasCopyableText && message.isOutgoing && _isEditableMessage) {
       result.add(MessageAction.edit);
@@ -527,7 +551,7 @@ class MessageActionMenu extends StatelessWidget {
     return desktopHeightForActionCount(
       _actions(
         context.read<TranslationController>(),
-        isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+        platform: Theme.of(context).platform,
       ).length,
       availableHeight: MediaQuery.sizeOf(context).height - 24,
     );
@@ -537,7 +561,7 @@ class MessageActionMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = _actions(
       context.watch<TranslationController>(),
-      isDesktop: isDesktopTargetPlatform(Theme.of(context).platform),
+      platform: Theme.of(context).platform,
     );
     if (_usesVerticalLayout(context)) {
       return _VerticalActionList(actions: actions, onSelect: onSelect);

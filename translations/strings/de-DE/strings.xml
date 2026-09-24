@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">Du kannst in diesem Chat keine Nachrichten senden</string>
     <string name="chatConnectedBusinessBot">Verbundener Business-Bot</string>
     <string name="chatContactCallsOnly">Anrufe sind nur mit Kontakten möglich</string>
+    <string name="chatCopyImageFailed">Das Bild konnte nicht kopiert werden.</string>
+    <string name="chatCopyImageNotReady">Das Bild wurde noch nicht heruntergeladen.</string>
+    <string name="chatCopyingImage">Bild wird kopiert…</string>
     <string name="chatDelete">Löschen</string>
     <string name="chatDeleteActionsDone">Erledigt</string>
     <string name="chatDeleteActionsFailed">Aktion konnte nicht ausgeführt werden: {value1}</string>
@@ -813,6 +816,16 @@
     <string name="chatFirstContactOfficial">Offizielles Konto</string>
     <string name="chatFirstContactPhoneCountry">Telefonnummer</string>
     <string name="chatFirstContactRegistration">Registrierung</string>
+    <string name="chatFolderGroupAddTo">Zu „{value1}“ hinzufügen</string>
+    <string name="chatFolderGroupCreate">Neue lokale Gruppe</string>
+    <string name="chatFolderGroupCreateWithFolder">Neue lokale Gruppe mit Ordner</string>
+    <string name="chatFolderGroupDelete">Lokale Gruppe löschen</string>
+    <string name="chatFolderGroupDeleteConfirm">Lokale Gruppe „{value1}“ löschen? Ordner bleiben in Telegram.</string>
+    <string name="chatFolderGroupNameHint">Gruppenname</string>
+    <string name="chatFolderGroupRemoveFolder">Aus lokaler Gruppe entfernen</string>
+    <string name="chatFolderGroupRename">Lokale Gruppe umbenennen</string>
+    <string name="chatFolderGroupMoveUp">Nach oben</string>
+    <string name="chatFolderGroupMoveDown">Nach unten</string>
     <string name="chatFolderManagementAddChat">Chat hinzufügen</string>
     <string name="chatFolderManagementAddExcludedChat">Ausgeschlossenen Chat hinzufügen</string>
     <string name="chatFolderManagementAddIncludedChat">Enthaltenen Chat hinzufügen</string>
@@ -1854,6 +1867,7 @@
     <string name="messageActionBlock">Blockieren</string>
     <string name="messageActionBlockKeyword">Wort blockieren</string>
     <string name="messageActionCopy">Kopieren</string>
+    <string name="messageActionCopyImage">Bild kopieren</string>
     <string name="messageActionDisplayOriginal">Original anzeigen</string>
     <string name="messageActionDisplayTranslation">Übersetzung anzeigen</string>
     <string name="messageActionEdit">Bearbeiten</string>

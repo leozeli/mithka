@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">このチャットではメッセージを送信できません</string>
     <string name="chatConnectedBusinessBot">接続中のビジネスボット</string>
     <string name="chatContactCallsOnly">連絡先との通話のみ対応しています</string>
+    <string name="chatCopyImageFailed">画像をコピーできませんでした。</string>
+    <string name="chatCopyImageNotReady">画像はまだダウンロードされていません。</string>
+    <string name="chatCopyingImage">画像をコピーしています…</string>
     <string name="chatDelete">削除</string>
     <string name="chatDeleteActionsDone">完了しました</string>
     <string name="chatDeleteActionsFailed">操作を実行できませんでした: {value1}</string>
@@ -813,6 +816,16 @@
     <string name="chatFirstContactOfficial">公式アカウント</string>
     <string name="chatFirstContactPhoneCountry">電話番号</string>
     <string name="chatFirstContactRegistration">登録時期</string>
+    <string name="chatFolderGroupAddTo">「{value1}」に追加</string>
+    <string name="chatFolderGroupCreate">ローカルグループを作成</string>
+    <string name="chatFolderGroupCreateWithFolder">このフォルダでローカルグループを作成</string>
+    <string name="chatFolderGroupDelete">ローカルグループを削除</string>
+    <string name="chatFolderGroupDeleteConfirm">ローカルグループ「{value1}」を削除しますか？フォルダはTelegramに残ります。</string>
+    <string name="chatFolderGroupNameHint">グループ名</string>
+    <string name="chatFolderGroupRemoveFolder">ローカルグループから削除</string>
+    <string name="chatFolderGroupRename">ローカルグループの名前を変更</string>
+    <string name="chatFolderGroupMoveUp">上へ移動</string>
+    <string name="chatFolderGroupMoveDown">下へ移動</string>
     <string name="chatFolderManagementAddChat">チャットを追加</string>
     <string name="chatFolderManagementAddExcludedChat">除外するチャットを追加</string>
     <string name="chatFolderManagementAddIncludedChat">含めるチャットを追加</string>
@@ -1850,6 +1863,7 @@
     <string name="messageActionBlock">ブロック</string>
     <string name="messageActionBlockKeyword">語句をブロック</string>
     <string name="messageActionCopy">コピー</string>
+    <string name="messageActionCopyImage">画像をコピー</string>
     <string name="messageActionDisplayOriginal">原文を表示</string>
     <string name="messageActionDisplayTranslation">翻訳を表示</string>
     <string name="messageActionEdit">編集</string>

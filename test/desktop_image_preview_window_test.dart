@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mithka/app/desktop_image_preview_window.dart';
 import 'package:mithka/chat/image_edit_view.dart';
 import 'package:mithka/chat/image_preview.dart';
+import 'package:mithka/l10n/app_localizations.dart';
+import 'package:mithka/platform/clipboard_image.dart';
 
 void main() {
   testWidgets('desktop preview builds a routed gallery shell with toolbar', (
@@ -155,6 +157,96 @@ void main() {
     expect(find.byType(ImageEditView), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('desktop preview copy places the image on the clipboard', (
+    tester,
+  ) async {
+    await AppStrings.ensureLoaded(const Locale('en'));
+    AppStrings.setLocale(const Locale('en'));
+    final directory = Directory.systemTemp.createTempSync(
+      'mithka-image-preview-copy-',
+    );
+    addTearDown(() => directory.deleteSync(recursive: true));
+    final image = File('${directory.path}/photo.png')
+      ..writeAsBytesSync(
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwC'
+          'AAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        ),
+      );
+    final previous = clipboardImageBytesWriter;
+    final writes = <(Uint8List, String)>[];
+    clipboardImageBytesWriter = (bytes, mimeType) async {
+      writes.add((bytes, mimeType));
+      return ClipboardImageCopyResult.copied;
+    };
+    addTearDown(() => clipboardImageBytesWriter = previous);
+
+    await tester.pumpWidget(
+      DesktopImagePreviewWindowApp(
+        arguments: DesktopImagePreviewWindowArguments(
+          title: 'Image preview',
+          localeTag: 'en',
+          dark: true,
+          items: [DesktopImagePreviewItemArguments(path: image.path)],
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('desktop-image-preview-more')));
+    await tester.pump();
+    await tester.runAsync(() async {
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-image-preview-copy')),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+
+    expect(writes, hasLength(1));
+    expect(writes.single.$2, 'image/png');
+    expect(writes.single.$1, image.readAsBytesSync());
+    expect(find.text('Copied'), findsOneWidget);
+  });
+
+  testWidgets(
+    'desktop preview copy explains when the image is not downloaded',
+    (tester) async {
+      await AppStrings.ensureLoaded(const Locale('en'));
+      AppStrings.setLocale(const Locale('en'));
+      final previous = clipboardImageBytesWriter;
+      var writes = 0;
+      clipboardImageBytesWriter = (bytes, mimeType) async {
+        writes++;
+        return ClipboardImageCopyResult.copied;
+      };
+      addTearDown(() => clipboardImageBytesWriter = previous);
+
+      await tester.pumpWidget(
+        const DesktopImagePreviewWindowApp(
+          arguments: DesktopImagePreviewWindowArguments(
+            title: 'Image preview',
+            localeTag: 'en',
+            dark: true,
+            items: [DesktopImagePreviewItemArguments()],
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-image-preview-more')),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('desktop-image-preview-copy')),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(writes, 0);
+      expect(find.text('The image isn’t downloaded yet.'), findsOneWidget);
+    },
+  );
 
   test('desktop image arguments contain presentation-only local data', () {
     final arguments = DesktopImagePreviewWindowArguments(

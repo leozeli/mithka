@@ -2,8 +2,17 @@
 
 #include <flutter_linux/flutter_linux.h>
 
+#include "clipboard_image_channel.h"
 #include "flutter/generated_plugin_registrant.h"
 #include <multi_window_manager/multi_window_manager_plugin.h>
+
+// Generated plugin registration does not know about Mithka's clipboard
+// channel. Child image-preview windows receive only this callback, so the
+// channel has to be installed here rather than once on the primary view.
+static void mithka_register_plugins(FlPluginRegistry* registry) {
+  fl_register_plugins(registry);
+  mithka_clipboard_image_channel_register(registry);
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -67,9 +76,9 @@ static void my_application_activate(GApplication* application) {
                            self);
   gtk_widget_realize(GTK_WIDGET(view));
 
-  fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  mithka_register_plugins(FL_PLUGIN_REGISTRY(view));
   multi_window_manager_linux_init(GTK_APPLICATION(application),
-                                  fl_register_plugins);
+                                  mithka_register_plugins);
   multi_window_manager_linux_detach_flutter_quit_on_window_close(window, view);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));

@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">你无法在此聊天中发送消息</string>
     <string name="chatConnectedBusinessBot">已连接的商务机器人</string>
     <string name="chatContactCallsOnly">仅支持与联系人通话</string>
+    <string name="chatCopyImageFailed">无法复制图片。</string>
+    <string name="chatCopyImageNotReady">图片尚未下载。</string>
+    <string name="chatCopyingImage">正在复制图片…</string>
     <string name="chatDelete">删除</string>
     <string name="chatDeleteActionsDone">操作已完成</string>
     <string name="chatDeleteActionsFailed">操作失败：{value1}</string>
@@ -813,6 +816,16 @@
     <string name="chatFirstContactOfficial">官方账号</string>
     <string name="chatFirstContactPhoneCountry">手机号归属地</string>
     <string name="chatFirstContactRegistration">注册时间</string>
+    <string name="chatFolderGroupAddTo">添加到“{value1}”</string>
+    <string name="chatFolderGroupCreate">新建本地分组</string>
+    <string name="chatFolderGroupCreateWithFolder">用此文件夹新建本地分组</string>
+    <string name="chatFolderGroupDelete">删除本地分组</string>
+    <string name="chatFolderGroupDeleteConfirm">删除本地分组“{value1}”？文件夹仍保留在 Telegram。</string>
+    <string name="chatFolderGroupNameHint">分组名称</string>
+    <string name="chatFolderGroupRemoveFolder">从本地分组移除</string>
+    <string name="chatFolderGroupRename">重命名本地分组</string>
+    <string name="chatFolderGroupMoveUp">上移</string>
+    <string name="chatFolderGroupMoveDown">下移</string>
     <string name="chatFolderManagementAddChat">添加聊天</string>
     <string name="chatFolderManagementAddExcludedChat">添加排除的聊天</string>
     <string name="chatFolderManagementAddIncludedChat">添加包含的聊天</string>
@@ -1850,6 +1863,7 @@
     <string name="messageActionBlock">屏蔽</string>
     <string name="messageActionBlockKeyword">屏蔽词</string>
     <string name="messageActionCopy">复制</string>
+    <string name="messageActionCopyImage">复制图片</string>
     <string name="messageActionDisplayOriginal">显示原文</string>
     <string name="messageActionDisplayTranslation">显示译文</string>
     <string name="messageActionEdit">编辑</string>

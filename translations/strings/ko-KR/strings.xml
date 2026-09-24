@@ -785,6 +785,9 @@
     <string name="chatCannotSendMessages">이 채팅에서는 메시지를 보낼 수 없습니다</string>
     <string name="chatConnectedBusinessBot">연결된 비즈니스 봇</string>
     <string name="chatContactCallsOnly">연락처와의 통화만 지원됩니다</string>
+    <string name="chatCopyImageFailed">이미지를 복사할 수 없습니다.</string>
+    <string name="chatCopyImageNotReady">이미지가 아직 다운로드되지 않았습니다.</string>
+    <string name="chatCopyingImage">이미지를 복사하는 중…</string>
     <string name="chatDelete">삭제</string>
     <string name="chatDeleteActionsDone">완료되었습니다</string>
     <string name="chatDeleteActionsFailed">작업을 적용할 수 없음: {value1}</string>
@@ -813,6 +816,16 @@
     <string name="chatFirstContactOfficial">공식 계정</string>
     <string name="chatFirstContactPhoneCountry">전화번호 국가</string>
     <string name="chatFirstContactRegistration">가입 시기</string>
+    <string name="chatFolderGroupAddTo">“{value1}”에 추가</string>
+    <string name="chatFolderGroupCreate">로컬 그룹 만들기</string>
+    <string name="chatFolderGroupCreateWithFolder">이 폴더로 로컬 그룹 만들기</string>
+    <string name="chatFolderGroupDelete">로컬 그룹 삭제</string>
+    <string name="chatFolderGroupDeleteConfirm">로컬 그룹 “{value1}”을(를) 삭제할까요? 폴더는 Telegram에 그대로 둡니다.</string>
+    <string name="chatFolderGroupNameHint">그룹 이름</string>
+    <string name="chatFolderGroupRemoveFolder">로컬 그룹에서 제거</string>
+    <string name="chatFolderGroupRename">로컬 그룹 이름 바꾸기</string>
+    <string name="chatFolderGroupMoveUp">위로 이동</string>
+    <string name="chatFolderGroupMoveDown">아래로 이동</string>
     <string name="chatFolderManagementAddChat">채팅 추가</string>
     <string name="chatFolderManagementAddExcludedChat">제외할 채팅 추가</string>
     <string name="chatFolderManagementAddIncludedChat">포함할 채팅 추가</string>
@@ -1850,6 +1863,7 @@
     <string name="messageActionBlock">차단</string>
     <string name="messageActionBlockKeyword">키워드 차단</string>
     <string name="messageActionCopy">복사</string>
+    <string name="messageActionCopyImage">이미지 복사</string>
     <string name="messageActionDisplayOriginal">원문 표시</string>
     <string name="messageActionDisplayTranslation">번역 표시</string>
     <string name="messageActionEdit">수정</string>

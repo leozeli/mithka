@@ -137,11 +137,84 @@ final class DesktopClipboardImagesPlugin: NSObject, FlutterPlugin {
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "writeImage" {
+      guard
+        let arguments = call.arguments as? [String: Any],
+        let data = arguments["data"] as? FlutterStandardTypedData
+      else {
+        result(false)
+        return
+      }
+      let mimeType = arguments["mimeType"] as? String ?? "image/png"
+      result(Self.writeImage(data: data.data, mimeType: mimeType))
+      return
+    }
     guard call.method == "readImages" else {
       result(FlutterMethodNotImplemented)
       return
     }
     result(Self.readImages())
+  }
+
+  /// Writes one image onto [pasteboard]. PNG and TIFF are added when the
+  /// bytes can be decoded so apps that only accept those types can paste it.
+  static func writeImage(
+    data: Data,
+    mimeType: String,
+    pasteboard: NSPasteboard = .general
+  ) -> Bool {
+    guard !data.isEmpty else { return false }
+    let original = pasteboardType(for: mimeType)
+    let item = NSPasteboardItem()
+    if original != .png, let png = pngData(from: data) {
+      item.setData(png, forType: .png)
+    }
+    item.setData(data, forType: original)
+    if original != .tiff, let tiff = tiffData(from: data) {
+      item.setData(tiff, forType: .tiff)
+    }
+    pasteboard.clearContents()
+    return pasteboard.writeObjects([item])
+  }
+
+  private static func pasteboardType(for mimeType: String) -> NSPasteboard.PasteboardType {
+    switch mimeType.lowercased() {
+    case "image/jpeg", "image/jpg":
+      return jpeg
+    case "image/gif":
+      return gif
+    case "image/webp":
+      return webp
+    case "image/heic":
+      return heic
+    case "image/heif":
+      return heif
+    case "image/tiff":
+      return .tiff
+    default:
+      return .png
+    }
+  }
+
+  private static func pngData(from data: Data) -> Data? {
+    guard
+      let image = NSImage(data: data),
+      let tiff = image.tiffRepresentation,
+      let bitmap = NSBitmapImageRep(data: tiff),
+      let png = bitmap.representation(using: .png, properties: [:]),
+      !png.isEmpty
+    else {
+      return nil
+    }
+    return png
+  }
+
+  private static func tiffData(from data: Data) -> Data? {
+    guard let image = NSImage(data: data), let tiff = image.tiffRepresentation, !tiff.isEmpty
+    else {
+      return nil
+    }
+    return tiff
   }
 
   static func readImages(from pasteboard: NSPasteboard = .general, limit: Int = Int.max)

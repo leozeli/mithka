@@ -45,6 +45,7 @@ import '../media/app_asset_picker.dart';
 import '../media/linux_chat_video_playback.dart';
 import '../moments/story_viewer_view.dart';
 import '../notifications/notification_controller.dart';
+import '../platform/clipboard_image.dart';
 import '../profile/profile_detail_view.dart';
 import '../settings/ai_endpoint_style.dart';
 import '../settings/ai_settings_controller.dart';
@@ -77,6 +78,7 @@ import 'chat_community_service_card.dart';
 import 'chat_first_contact_card.dart';
 import 'chat_first_contact_info.dart';
 import 'chat_frame_scheduler.dart';
+import 'chat_image_clipboard.dart';
 import 'chat_info_view.dart';
 import 'chat_input_bar.dart';
 import 'chat_media_drop_region.dart';
@@ -4895,6 +4897,8 @@ class _ChatViewState extends State<ChatView> {
     switch (action) {
       case MessageAction.copy:
         unawaited(Clipboard.setData(ClipboardData(text: message.text)));
+      case MessageAction.copyImage:
+        unawaited(_copyPhotoToClipboard(message));
       case MessageAction.edit:
         unawaited(_editMessage(message));
       case MessageAction.suggestOffer:
@@ -5059,6 +5063,28 @@ class _ChatViewState extends State<ChatView> {
       case MessageAction.delete:
         await _performDeleteAction(message);
     }
+  }
+
+  /// Copies the photo itself. A captionless photo's Copy action used to put
+  /// the "[Image]" placeholder on the clipboard; this downloads the file when
+  /// it is not local yet, then places the picture where other apps can paste it.
+  Future<void> _copyPhotoToClipboard(ChatMessage message) async {
+    final progressTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      showToast(
+        context,
+        AppStringKeys.chatCopyingImage,
+        visibleFor: const Duration(milliseconds: 900),
+      );
+    });
+    final result = await copyChatPhotoToClipboard(message);
+    progressTimer.cancel();
+    if (!mounted) return;
+    showToast(
+      context,
+      clipboardImageCopyFeedbackKey(result),
+      visibleFor: const Duration(seconds: 2),
+    );
   }
 
   /// Desktop counterpart of 保存到相册: fetch the original if it is not local

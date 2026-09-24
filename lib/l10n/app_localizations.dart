@@ -753,6 +753,9 @@ abstract final class AppStringKeys {
   static const chatButtonUnsupported = 'chatButtonUnsupported';
   static const chatCannotSendMessages = 'chatCannotSendMessages';
   static const chatContactCallsOnly = 'chatContactCallsOnly';
+  static const chatCopyImageFailed = 'chatCopyImageFailed';
+  static const chatCopyImageNotReady = 'chatCopyImageNotReady';
+  static const chatCopyingImage = 'chatCopyingImage';
   static const chatFirstContactNotContact = 'chatFirstContactNotContact';
   static const chatFirstContactNotOfficial = 'chatFirstContactNotOfficial';
   static const chatFirstContactOfficial = 'chatFirstContactOfficial';
@@ -1848,6 +1851,7 @@ abstract final class AppStringKeys {
   static const messageActionBlock = 'messageActionBlock';
   static const messageActionBlockKeyword = 'messageActionBlockKeyword';
   static const messageActionCopy = 'messageActionCopy';
+  static const messageActionCopyImage = 'messageActionCopyImage';
   static const messageActionDisplayOriginal = 'messageActionDisplayOriginal';
   static const messageActionDisplayTranslation =
       'messageActionDisplayTranslation';
@@ -3379,6 +3383,17 @@ abstract final class AppStringKeys {
   static const chatAddPollOption = 'chatAddPollOption';
   static const chatAdministratorEditTransferOwnership =
       'chatAdministratorEditTransferOwnership';
+  static const chatFolderGroupAddTo = 'chatFolderGroupAddTo';
+  static const chatFolderGroupCreate = 'chatFolderGroupCreate';
+  static const chatFolderGroupCreateWithFolder =
+      'chatFolderGroupCreateWithFolder';
+  static const chatFolderGroupDelete = 'chatFolderGroupDelete';
+  static const chatFolderGroupDeleteConfirm = 'chatFolderGroupDeleteConfirm';
+  static const chatFolderGroupNameHint = 'chatFolderGroupNameHint';
+  static const chatFolderGroupMoveDown = 'chatFolderGroupMoveDown';
+  static const chatFolderGroupMoveUp = 'chatFolderGroupMoveUp';
+  static const chatFolderGroupRemoveFolder = 'chatFolderGroupRemoveFolder';
+  static const chatFolderGroupRename = 'chatFolderGroupRename';
   static const chatFolderManagementAllChats = 'chatFolderManagementAllChats';
   static const chatFolderManagementDeleteThisInviteLink =
       'chatFolderManagementDeleteThisInviteLink';
