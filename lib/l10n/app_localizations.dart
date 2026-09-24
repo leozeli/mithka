@@ -3342,6 +3342,7 @@ abstract final class AppStringKeys {
   static const chatAdministratorEditTransferOwnership =
       'chatAdministratorEditTransferOwnership';
   static const chatFolderGroupAddTo = 'chatFolderGroupAddTo';
+  static const chatFolderGroupAllFolders = 'chatFolderGroupAllFolders';
   static const chatFolderGroupCreate = 'chatFolderGroupCreate';
   static const chatFolderGroupCreateWithFolder =
       'chatFolderGroupCreateWithFolder';

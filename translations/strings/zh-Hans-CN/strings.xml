@@ -817,6 +817,7 @@
     <string name="chatFirstContactPhoneCountry">手机号归属地</string>
     <string name="chatFirstContactRegistration">注册时间</string>
     <string name="chatFolderGroupAddTo">添加到“{value1}”</string>
+    <string name="chatFolderGroupAllFolders">全部文件夹</string>
     <string name="chatFolderGroupCreate">新建本地分组</string>
     <string name="chatFolderGroupCreateWithFolder">用此文件夹新建本地分组</string>
     <string name="chatFolderGroupDelete">删除本地分组</string>

@@ -15,6 +15,30 @@ const double splitResizeHandleWidth = 8;
 const double desktopNavigationRailWidth = 58;
 const double desktopConversationMinWidth = 440;
 
+/// Fixed rails in front of the desktop chat list: local groups, then folders.
+const double chatListGroupColumnWidth = 92;
+const double chatListFolderColumnWidth = 176;
+
+double get chatListFolderChromeWidth =>
+    chatListGroupColumnWidth + chatListFolderColumnWidth;
+
+/// True when [chromeWidth] can sit with the list pane and still leave the
+/// conversation its minimum width.
+bool chatListFolderChromeFits({
+  required double totalWidth,
+  required double requestedSidebarWidth,
+  required double chromeWidth,
+  bool infoPaneRequested = false,
+}) {
+  if (chromeWidth <= 0) return false;
+  final geometry = resolveDesktopShellGeometry(
+    totalWidth: totalWidth - chromeWidth,
+    requestedSidebarWidth: requestedSidebarWidth,
+    infoPaneRequested: infoPaneRequested,
+  );
+  return geometry.showListPane;
+}
+
 /// Mouse-oriented group context pane. The width leaves enough room for member
 /// names while avoiding a visually empty trailing gutter beside the chat.
 const double desktopInfoPaneWidth = 224;

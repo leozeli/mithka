@@ -1030,71 +1030,94 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       builder: (context, _) => Column(
         children: [
           Expanded(
-            child: ValueListenableBuilder<double?>(
-              valueListenable: _splitSidebarWidth,
-              builder: (context, requestedWidth, _) {
-                // The window size is read here, not in the root build, so a
-                // resize frame rebuilds these two pane widths instead of the
-                // whole shell.
-                final size = MediaQuery.sizeOf(context);
-                final contentWidth = size.width - desktopNavigationRailWidth;
-                final geometry = resolveDesktopShellGeometry(
-                  totalWidth: size.width,
-                  requestedSidebarWidth:
-                      requestedWidth ?? defaultSplitSidebarWidth(contentWidth),
-                  infoPaneRequested: infoPaneRequested,
-                );
-                _desktopListPaneVisible = geometry.showListPane;
-                final canToggleInfoPane =
-                    geometry.showListPane &&
-                    selectedChat != null &&
-                    canShowDesktopInfoPane(
-                      totalWidth: size.width,
-                      sidebarWidth: geometry.sidebarWidth,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _chatListController.folderChrome,
+              builder: (context, requestedChrome, _) {
+                return ValueListenableBuilder<double?>(
+                  valueListenable: _splitSidebarWidth,
+                  builder: (context, requestedWidth, _) {
+                    // The window size is read here, not in the root build, so a
+                    // resize frame rebuilds these two pane widths instead of the
+                    // whole shell.
+                    final size = MediaQuery.sizeOf(context);
+                    final contentWidth =
+                        size.width - desktopNavigationRailWidth;
+                    final sidebarRequest =
+                        requestedWidth ??
+                        defaultSplitSidebarWidth(contentWidth);
+                    final chrome =
+                        chatListFolderChromeFits(
+                          totalWidth: size.width,
+                          requestedSidebarWidth: sidebarRequest,
+                          chromeWidth: requestedChrome,
+                          infoPaneRequested: infoPaneRequested,
+                        )
+                        ? requestedChrome
+                        : 0.0;
+                    final geometry = resolveDesktopShellGeometry(
+                      totalWidth: size.width - chrome,
+                      requestedSidebarWidth:
+                          requestedWidth ??
+                          defaultSplitSidebarWidth(contentWidth - chrome),
+                      infoPaneRequested: infoPaneRequested,
                     );
-                final contextPaneExtent = geometry.showInfoPane
-                    ? desktopInfoPaneHandleWidth + desktopInfoPaneWidth
-                    : 0.0;
-                return Stack(
-                  children: [
-                    Row(
+                    _desktopListPaneVisible = geometry.showListPane;
+                    final listPaneWidth = geometry.sidebarWidth + chrome;
+                    final canToggleInfoPane =
+                        geometry.showListPane &&
+                        selectedChat != null &&
+                        canShowDesktopInfoPane(
+                          totalWidth: size.width,
+                          sidebarWidth: listPaneWidth,
+                        );
+                    final contextPaneExtent = geometry.showInfoPane
+                        ? desktopInfoPaneHandleWidth + desktopInfoPaneWidth
+                        : 0.0;
+                    return Stack(
                       children: [
-                        rail,
+                        Row(
+                          children: [
+                            rail,
+                            if (geometry.showListPane)
+                              SizedBox(
+                                key: const ValueKey('desktop-list-pane'),
+                                width: listPaneWidth,
+                                child: sidebarPane,
+                              ),
+                            SizedBox(
+                              key: const ValueKey('desktop-conversation-pane'),
+                              width:
+                                  geometry.conversationWidth +
+                                  contextPaneExtent,
+                              child: geometry.showListPane || hasDesktopDetail
+                                  ? conversationPane(
+                                      showBackButton:
+                                          desktopDetailNeedsBackButton(
+                                            geometry,
+                                          ),
+                                      showInfoPane: geometry.showInfoPane,
+                                      canToggleInfoPane: canToggleInfoPane,
+                                    )
+                                  : sidebarOnlyPane,
+                            ),
+                          ],
+                        ),
                         if (geometry.showListPane)
-                          SizedBox(
-                            key: const ValueKey('desktop-list-pane'),
-                            width: geometry.sidebarWidth,
-                            child: sidebarPane,
+                          Positioned(
+                            left:
+                                desktopNavigationRailWidth +
+                                listPaneWidth -
+                                splitResizeHandleWidth / 2,
+                            top: 0,
+                            bottom: 0,
+                            child: _splitResizeHandle(
+                              totalWidth: contentWidth - chrome,
+                              sidebarWidth: geometry.sidebarWidth,
+                            ),
                           ),
-                        SizedBox(
-                          key: const ValueKey('desktop-conversation-pane'),
-                          width: geometry.conversationWidth + contextPaneExtent,
-                          child: geometry.showListPane || hasDesktopDetail
-                              ? conversationPane(
-                                  showBackButton: desktopDetailNeedsBackButton(
-                                    geometry,
-                                  ),
-                                  showInfoPane: geometry.showInfoPane,
-                                  canToggleInfoPane: canToggleInfoPane,
-                                )
-                              : sidebarOnlyPane,
-                        ),
                       ],
-                    ),
-                    if (geometry.showListPane)
-                      Positioned(
-                        left:
-                            desktopNavigationRailWidth +
-                            geometry.sidebarWidth -
-                            splitResizeHandleWidth / 2,
-                        top: 0,
-                        bottom: 0,
-                        child: _splitResizeHandle(
-                          totalWidth: contentWidth,
-                          sidebarWidth: geometry.sidebarWidth,
-                        ),
-                      ),
-                  ],
+                    );
+                  },
                 );
               },
             ),
@@ -1852,20 +1875,23 @@ class _MessageEmptyPane extends StatelessWidget {
       child: Center(
         child: Opacity(
           opacity: 0.08,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset('assets/penguin.png', width: 92, height: 92),
-              const SizedBox(width: 18),
-              Text(
-                'Mithka',
-                style: TextStyle(
-                  fontSize: 64,
-                  fontWeight: FontWeight.w600,
-                  color: c.textTertiary,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset('assets/penguin.png', width: 92, height: 92),
+                const SizedBox(width: 18),
+                Text(
+                  'Mithka',
+                  style: TextStyle(
+                    fontSize: 64,
+                    fontWeight: FontWeight.w600,
+                    color: c.textTertiary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

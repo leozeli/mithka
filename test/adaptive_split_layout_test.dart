@@ -188,6 +188,26 @@ void main() {
     expect(narrowed.sidebarWidth, 420);
   });
 
+  test('folder columns fit only when the conversation keeps its minimum', () {
+    expect(chatListFolderChromeWidth, 268);
+    expect(
+      chatListFolderChromeFits(
+        totalWidth: 1100,
+        requestedSidebarWidth: 333,
+        chromeWidth: chatListFolderChromeWidth,
+      ),
+      isTrue,
+    );
+    expect(
+      chatListFolderChromeFits(
+        totalWidth: 900,
+        requestedSidebarWidth: 320,
+        chromeWidth: chatListFolderChromeWidth,
+      ),
+      isFalse,
+    );
+  });
+
   test('desktop info fit uses the actual sidebar width', () {
     expect(
       canShowDesktopInfoPane(totalWidth: 1142, sidebarWidth: 420),

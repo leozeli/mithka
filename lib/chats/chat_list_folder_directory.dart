@@ -26,6 +26,10 @@ const chatListFolderChildIndent = 16.0;
 double chatListFolderHeaderExtent(BuildContext context) =>
     AppMetric.chatListRowExtent(context);
 
+/// Folder-rail rows are shorter than chat rows. Group names use the taller step.
+const double chatListFolderRailExtent = 40;
+const double chatListGroupRailExtent = 48;
+
 enum ChatListDirectorySlotKind {
   pullDownArchive,
   groupHeader,
@@ -304,6 +308,8 @@ class ChatListFolderHeader extends StatelessWidget {
     this.expanded = false,
     this.showsChevron = false,
     this.selected = false,
+    this.compact = false,
+    this.centered = false,
     this.onSecondaryTap,
     this.draggable = false,
     this.dragging = false,
@@ -319,6 +325,12 @@ class ChatListFolderHeader extends StatelessWidget {
   /// Local groups disclose their folder rows. Folder and All rows do not.
   final bool showsChevron;
   final bool selected;
+
+  /// Dedicated rail row: shorter than a chat row, without the avatar column.
+  final bool compact;
+
+  /// Centers a short label, used by the narrow local-group column.
+  final bool centered;
   final VoidCallback? onSecondaryTap;
   final bool draggable;
   final bool dragging;
@@ -341,6 +353,8 @@ class ChatListFolderHeader extends StatelessWidget {
         showsChevron: showsChevron,
         draggable: draggable,
         highlighted: highlighted,
+        compact: compact,
+        centered: centered,
       ),
     );
   }
@@ -353,6 +367,8 @@ class _FolderHeaderChrome extends StatefulWidget {
     required this.showsChevron,
     required this.draggable,
     required this.highlighted,
+    this.compact = false,
+    this.centered = false,
   });
 
   final String title;
@@ -360,6 +376,8 @@ class _FolderHeaderChrome extends StatefulWidget {
   final bool showsChevron;
   final bool draggable;
   final bool highlighted;
+  final bool compact;
+  final bool centered;
 
   @override
   State<_FolderHeaderChrome> createState() => _FolderHeaderChromeState();
@@ -382,41 +400,54 @@ class _FolderHeaderChromeState extends State<_FolderHeaderChrome> {
         if (_hover) setState(() => _hover = false);
       },
       child: SizedBox(
-        height: chatListFolderHeaderExtent(context),
+        height: widget.compact
+            ? (widget.centered
+                  ? chatListGroupRailExtent
+                  : chatListFolderRailExtent)
+            : chatListFolderHeaderExtent(context),
         child: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.compact ? AppSpacing.md : AppSpacing.xl,
+              ),
               child: Row(
                 children: [
-                  SizedBox(
-                    width: AppMetric.chatListAvatarSize(),
-                    child: widget.showsChevron
-                        ? Center(
-                            child: AnimatedRotation(
-                              turns: widget.expanded ? 0 : collapsedTurns,
-                              duration: AppMotion.duration(
-                                context,
-                                AppMotion.quick,
+                  if (!widget.compact) ...[
+                    SizedBox(
+                      width: AppMetric.chatListAvatarSize(),
+                      child: widget.showsChevron
+                          ? Center(
+                              child: AnimatedRotation(
+                                turns: widget.expanded ? 0 : collapsedTurns,
+                                duration: AppMotion.duration(
+                                  context,
+                                  AppMotion.quick,
+                                ),
+                                curve: AppMotion.standard,
+                                child: AppIcon(
+                                  HeroAppIcons.chevronDown,
+                                  size: AppIconSize.xs,
+                                  color: colors.textTertiary,
+                                ),
                               ),
-                              curve: AppMotion.standard,
-                              child: AppIcon(
-                                HeroAppIcons.chevronDown,
-                                size: AppIconSize.xs,
-                                color: colors.textTertiary,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: AppSpacing.lg),
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: AppSpacing.lg),
+                  ],
                   Expanded(
                     child: Text(
                       widget.title,
-                      maxLines: 1,
+                      maxLines: widget.centered ? 2 : 1,
                       overflow: TextOverflow.ellipsis,
+                      textAlign: widget.centered
+                          ? TextAlign.center
+                          : TextAlign.start,
                       style: TextStyle(
-                        fontSize: AppTextSize.chatListTitle(),
+                        fontSize: widget.compact
+                            ? (widget.centered ? 11 : AppTextSize.footnote)
+                            : AppTextSize.chatListTitle(),
                         fontWeight: FontWeight.w500,
                         color: colors.textPrimary,
                       ),
@@ -476,6 +507,8 @@ class ChatListSectionDrag extends StatefulWidget {
     required this.title,
     required this.expanded,
     required this.showsChevron,
+    this.compact = false,
+    this.centered = false,
     required this.highlight,
     required this.resolveTarget,
     required this.onDrop,
@@ -488,6 +521,8 @@ class ChatListSectionDrag extends StatefulWidget {
   final String title;
   final bool expanded;
   final bool showsChevron;
+  final bool compact;
+  final bool centered;
   final ValueNotifier<String?> highlight;
   final String? Function(Offset global) resolveTarget;
   final ValueChanged<String> onDrop;
@@ -625,6 +660,8 @@ class _ChatListSectionDragState extends State<ChatListSectionDrag> {
               title: widget.title,
               expanded: widget.expanded,
               showsChevron: widget.showsChevron,
+              compact: widget.compact,
+              centered: widget.centered,
             ),
           ),
         );
@@ -674,11 +711,15 @@ class _SectionDragFeedback extends StatelessWidget {
     required this.title,
     required this.expanded,
     required this.showsChevron,
+    this.compact = false,
+    this.centered = false,
   });
 
   final String title;
   final bool expanded;
   final bool showsChevron;
+  final bool compact;
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
@@ -701,6 +742,8 @@ class _SectionDragFeedback extends StatelessWidget {
         showsChevron: showsChevron,
         draggable: false,
         highlighted: false,
+        compact: compact,
+        centered: centered,
       ),
     );
   }

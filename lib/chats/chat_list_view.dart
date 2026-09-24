@@ -73,13 +73,26 @@ import 'search_view.dart';
 
 class ChatListController extends ChangeNotifier {
   final sideFolders = ValueNotifier<Widget?>(null);
+  final folderChrome = ValueNotifier<double>(0);
   Object? _sideFoldersOwner;
+  Object? _folderChromeOwner;
   bool _disposed = false;
 
   void publishSideFolders(Object owner, Widget? child) {
     if (_disposed) return;
     _sideFoldersOwner = owner;
     sideFolders.value = child;
+  }
+
+  /// Asks the desktop shell to widen the list pane by [width] so the group
+  /// and folder columns can sit beside the chats. Zero clears the request.
+  void publishFolderChrome(Object owner, double width) {
+    if (_disposed) return;
+    if (identical(_folderChromeOwner, owner) && folderChrome.value == width) {
+      return;
+    }
+    _folderChromeOwner = owner;
+    folderChrome.value = width;
   }
 
   void clearSideFolders(Object owner) {
@@ -94,6 +107,7 @@ class ChatListController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     sideFolders.dispose();
+    folderChrome.dispose();
     super.dispose();
   }
 
@@ -1052,6 +1066,10 @@ class _ChatListViewState extends State<ChatListView>
   /// Tabs mode draws Telegram folders inside the message list, so the outer
   /// rail and tab strip stay unpublished.
   bool _foldersInMessageList = false;
+  bool _threeColumnChrome = false;
+
+  /// Null shows every folder. A group id shows only that group's folders.
+  String? _folderScopeGroupId;
   List<ChatListDirectorySlot>? _directorySlots;
   double _directoryLeadingExtent = 0;
   double _directoryRowHeight = 0;
@@ -1890,7 +1908,7 @@ class _ChatListViewState extends State<ChatListView>
     );
     if (entryIndex < 0) return null;
 
-    if (_foldersInMessageList) {
+    if (_foldersInMessageList && !_threeColumnChrome) {
       final slots = _directorySlots;
       if (slots == null) return null;
       final target = slots.indexWhere(
@@ -1976,9 +1994,13 @@ class _ChatListViewState extends State<ChatListView>
     final controller = widget.controller;
     // The message list owns folder browsing in Tabs mode. Clear any rail the
     // navigation column is still holding.
+    final folderChrome = widget.desktopSidebar && _foldersInMessageList
+        ? chatListFolderChromeWidth
+        : 0.0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(widget.controller, controller)) {
         controller?.publishSideFolders(this, null);
+        controller?.publishFolderChrome(this, folderChrome);
       }
     });
     if (folderMode == ChatFolderDisplayMode.hidden && !_model.isAllFilter) {
@@ -1988,43 +2010,203 @@ class _ChatListViewState extends State<ChatListView>
         }
       });
     }
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          color: c.background,
-          child: Column(
-            children: [
-              if (!widget.desktopSidebar) _header(),
-              Expanded(
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerDown: _handleGesturePointerDown,
-                  onPointerMove: _handleGesturePointerMove,
-                  onPointerUp: _handleGesturePointerUp,
-                  onPointerCancel: _handleGesturePointerCancel,
-                  child: _folderPager(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _threeColumnChrome =
+            folderChrome > 0 &&
+            constraints.maxWidth >= folderChrome + splitSidebarMinWidth;
+        final scopeId = _resolvedFolderScopeId();
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              color: c.background,
+              child: Row(
+                children: [
+                  if (_threeColumnChrome) ...[
+                    _localGroupColumn(scopeId),
+                    _folderRailColumn(scopeId),
+                  ],
+                  Expanded(
+                    child: Column(
+                      children: [
+                        if (!widget.desktopSidebar) _header(),
+                        Expanded(
+                          child: Listener(
+                            behavior: HitTestBehavior.translucent,
+                            onPointerDown: _handleGesturePointerDown,
+                            onPointerMove: _handleGesturePointerMove,
+                            onPointerUp: _handleGesturePointerUp,
+                            onPointerCancel: _handleGesturePointerCancel,
+                            child: _folderPager(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 12 + BottomBarInset.of(context),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _showScrollToTop,
+                builder: (context, show, _) {
+                  if (!show) return const SizedBox.shrink();
+                  return ChatListScrollToTopButton(onTap: _scrollListToTop);
+                },
+              ),
+            ),
+            _plusMenuOverlay(visible: _showPlusMenu),
+            _filterMenuOverlay(
+              visible:
+                  folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String? _resolvedFolderScopeId() {
+    final id = _folderScopeGroupId;
+    if (id == null) return null;
+    return _folderGroups.groupFor(id) == null ? null : id;
+  }
+
+  void _selectFolderScope(String? groupId) {
+    if (_folderScopeGroupId == groupId) return;
+    setState(() => _folderScopeGroupId = groupId);
+  }
+
+  List<ChatFilterOption> _scopedFilters(String? scopeId) {
+    final byId = <int, ChatFilterOption>{
+      for (final filter in _model.filters)
+        if (filter.folderId != null) filter.folderId!: filter,
+    };
+    final telegramIds = [
+      for (final filter in _model.filters)
+        if (filter.folderId != null) filter.folderId!,
+    ];
+    final ids = scopeId == null
+        ? _folderGroups.directoryFolderIds(telegramIds)
+        : [
+            for (final id
+                in _folderGroups.groupFor(scopeId)?.childFolderIds ??
+                    const <int>[])
+              if (byId.containsKey(id)) id,
+          ];
+    return [for (final id in ids) byId[id]!];
+  }
+
+  Widget _localGroupColumn(String? scopeId) {
+    final c = context.colors;
+    final groups = _folderGroups.groups;
+    return Container(
+      key: const ValueKey('chat-list-group-column'),
+      width: chatListGroupColumnWidth,
+      decoration: BoxDecoration(
+        color: c.groupedBackground,
+        border: BorderDirectional(
+          end: BorderSide(color: c.divider, width: AppMetric.divider),
+        ),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              children: [
+                _directoryHeader(
+                  key: const ValueKey('chat-list-folder-scope-all'),
+                  title: AppStrings.t(AppStringKeys.chatFolderGroupAllFolders),
+                  selected: scopeId == null,
+                  compact: true,
+                  centered: true,
+                  actions: _allSectionActions(),
+                  onTap: () => _selectFolderScope(null),
+                ),
+                for (var index = 0; index < groups.length; index++)
+                  _directoryHeader(
+                    key: ValueKey('chat-list-group-${groups[index].id}'),
+                    title: groups[index].title,
+                    selected: scopeId == groups[index].id,
+                    compact: true,
+                    centered: true,
+                    dragToken: 'g:${groups[index].id}',
+                    actions: _localGroupActions(groups[index]),
+                    onTap: () => _selectFolderScope(groups[index].id),
+                  ),
+              ],
+            ),
+          ),
+          AppInteractiveSurface(
+            key: const ValueKey('chat-list-group-create'),
+            onTap: () => unawaited(_createLocalFolderGroup()),
+            semanticLabel: AppStrings.t(AppStringKeys.chatFolderGroupCreate),
+            child: SizedBox(
+              height: 36,
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.plus,
+                  size: AppIconSize.sm,
+                  color: c.textTertiary,
                 ),
               ),
-            ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _folderRailColumn(String? scopeId) {
+    final c = context.colors;
+    final filters = _scopedFilters(scopeId);
+    return Container(
+      key: const ValueKey('chat-list-folder-column'),
+      width: chatListFolderColumnWidth,
+      decoration: BoxDecoration(
+        color: c.background,
+        border: BorderDirectional(
+          end: BorderSide(color: c.divider, width: AppMetric.divider),
         ),
-        Positioned(
-          right: 16,
-          bottom: 12 + BottomBarInset.of(context),
-          child: ValueListenableBuilder<bool>(
-            valueListenable: _showScrollToTop,
-            builder: (context, show, _) {
-              if (!show) return const SizedBox.shrink();
-              return ChatListScrollToTopButton(onTap: _scrollListToTop);
-            },
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        children: [
+          _directoryHeader(
+            key: const ValueKey('chat-list-folder-all'),
+            title: _model.filters
+                .firstWhere(
+                  (item) => item.isAll,
+                  orElse: () => _model.filters.first,
+                )
+                .title
+                .l10n(context),
+            selected: _model.isAllFilter,
+            compact: true,
+            actions: _allSectionActions(),
+            onTap: () => _selectDirectoryFilter(
+              _model.filters.firstWhere(
+                (item) => item.isAll,
+                orElse: () => _model.filters.first,
+              ),
+            ),
           ),
-        ),
-        _plusMenuOverlay(visible: _showPlusMenu),
-        _filterMenuOverlay(
-          visible: folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
-        ),
-      ],
+          for (final filter in filters)
+            _directoryHeader(
+              key: ValueKey('chat-list-folder-${filter.folderId}'),
+              title: filter.title.l10n(context),
+              selected: _model.selectedFilter.folderId == filter.folderId,
+              compact: true,
+              dragToken: 'f:${filter.folderId}',
+              actions: _folderSectionActions(filter),
+              onTap: () => _selectDirectoryFilter(filter),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2804,12 +2986,14 @@ class _ChatListViewState extends State<ChatListView>
   Widget _directoryHeader({
     required Key key,
     required String title,
-    required double indent,
     required VoidCallback onTap,
     required List<DesktopRowAction> actions,
+    double indent = 0,
     bool expanded = false,
     bool showsChevron = false,
     bool selected = false,
+    bool compact = false,
+    bool centered = false,
     String? dragToken,
     VoidCallback? onSecondaryTap,
   }) {
@@ -2825,6 +3009,8 @@ class _ChatListViewState extends State<ChatListView>
             expanded: expanded,
             showsChevron: showsChevron,
             selected: selected,
+            compact: compact,
+            centered: centered,
             onTap: onTap,
             onSecondaryTap: desktop ? null : onSecondaryTap,
           )
@@ -2835,6 +3021,8 @@ class _ChatListViewState extends State<ChatListView>
             title: title,
             expanded: expanded,
             showsChevron: showsChevron,
+            compact: compact,
+            centered: centered,
             highlight: _sectionDropHighlight,
             resolveTarget: (global) =>
                 _sectionTargetAt(global, sections, token),
@@ -2847,6 +3035,8 @@ class _ChatListViewState extends State<ChatListView>
                 expanded: expanded,
                 showsChevron: showsChevron,
                 selected: selected,
+                compact: compact,
+                centered: centered,
                 draggable: sections.length > 1,
                 dragging: dragging,
                 highlighted: highlighted,
@@ -3115,7 +3305,9 @@ class _ChatListViewState extends State<ChatListView>
   }
 
   Widget _chatList() {
-    if (_foldersInMessageList) return _folderDirectoryList();
+    if (_foldersInMessageList && !_threeColumnChrome) {
+      return _folderDirectoryList();
+    }
     _directorySlots = null;
     final c = context.colors;
     final theme = context.watch<ThemeController>();

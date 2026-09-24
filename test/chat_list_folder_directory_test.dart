@@ -278,8 +278,12 @@ void main() {
   });
 
   testWidgets(
-    'folders in the chat list select like the side rail',
+    'desktop chat area uses group and folder columns',
     (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
       final updates = StreamController<Map<String, dynamic>>.broadcast();
       TdClient.shared.configureProxy(
         TdClientProxyTransport(
@@ -365,14 +369,33 @@ void main() {
 
       expect(find.byType(ChatFolderRail), findsNothing);
       expect(controller.sideFolders.value, isNull);
+      expect(
+        find.byKey(const ValueKey('chat-list-group-column')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('chat-list-folder-column')),
+        findsOneWidget,
+      );
+      expect(find.text('All folders'), findsOneWidget);
       expect(find.text('Main chat'), findsOneWidget);
       expect(find.text('Work chat'), findsNothing);
+      expect(
+        tester.getTopLeft(find.text('Main chat')).dx,
+        greaterThan(
+          tester
+              .getTopRight(
+                find.byKey(const ValueKey('chat-list-folder-column')),
+              )
+              .dx,
+        ),
+      );
 
       final workHeader = find.byKey(const ValueKey('chat-list-folder-3'));
       final workTitle = tester.widget<Text>(
         find.descendant(of: workHeader, matching: find.text('Work')),
       );
-      expect(workTitle.style?.fontSize, AppTextSize.chatListTitle());
+      expect(workTitle.style?.fontSize, AppTextSize.footnote);
       expect(workTitle.style?.fontWeight, FontWeight.w500);
       expect(
         find.descendant(of: workHeader, matching: find.byType(ChatFolderIcon)),
@@ -387,13 +410,12 @@ void main() {
         tester.widget<ChatListFolderHeader>(workHeader).showsChevron,
         isFalse,
       );
+      expect(tester.getSize(workHeader).height, chatListFolderRailExtent);
       final allHeader = find.byKey(const ValueKey('chat-list-folder-all'));
       expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isTrue);
       expect(
-        tester.getSize(workHeader).height,
-        tester
-            .getSize(find.byKey(const ValueKey('chat-list-folder-chat-all-11')))
-            .height,
+        tester.getSize(find.byKey(const ValueKey<int>(11))).height,
+        greaterThan(tester.getSize(allHeader).height),
       );
 
       await tester.tap(workHeader);
@@ -405,10 +427,10 @@ void main() {
       expect(tester.widget<ChatListFolderHeader>(workHeader).selected, isTrue);
       expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isFalse);
       expect(
-        tester.getTopLeft(find.text('Work chat')).dy,
-        greaterThan(tester.getTopLeft(allHeader).dy),
+        tester.getTopLeft(find.text('Work chat')).dx,
+        greaterThan(tester.getTopRight(workHeader).dx),
       );
-      expect(find.byKey(ChatListSelectionHighlight.railKey), findsOneWidget);
+      expect(find.byKey(ChatListSelectionHighlight.railKey), findsWidgets);
 
       await tester.tap(workHeader);
       await tester.pump();
@@ -445,19 +467,13 @@ void main() {
       );
       await tester.tap(find.textContaining('Add to'));
       await tester.pump();
-      expect(
-        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
-        greaterThan(
-          tester
-              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-4')))
-              .dx,
-        ),
-      );
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
 
       await tester.tap(find.text('Focus'));
       await tester.pump();
-      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsNothing);
-      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsNothing);
 
       final focusHeader = find.ancestor(
         of: find.text('Focus'),
@@ -465,46 +481,33 @@ void main() {
       );
       expect(
         tester.widget<ChatListFolderHeader>(focusHeader).showsChevron,
-        isTrue,
+        isFalse,
+      );
+      expect(tester.widget<ChatListFolderHeader>(focusHeader).selected, isTrue);
+      expect(
+        find.descendant(of: focusHeader, matching: find.byType(AppIcon)),
+        findsNothing,
       );
       expect(
-        tester
-            .widget<AppIcon>(
-              find.descendant(of: focusHeader, matching: find.byType(AppIcon)),
-            )
-            .size,
-        AppIconSize.xs,
+        tester.getTopLeft(focusHeader).dx,
+        lessThan(
+          tester
+              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-3')))
+              .dx,
+        ),
       );
 
-      await tester.tap(find.text('Focus'));
-      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-3')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 80));
       expect(find.text('Work chat'), findsOneWidget);
       expect(find.text('Main chat'), findsNothing);
-      expect(
-        tester.getTopLeft(find.text('Focus')).dy,
-        lessThan(
-          tester
-              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-3')))
-              .dy,
-        ),
+
+      await tester.tap(
+        find.byKey(const ValueKey('chat-list-folder-scope-all')),
       );
-      expect(
-        tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dy,
-        lessThan(
-          tester
-              .getTopLeft(find.byKey(const ValueKey('chat-list-folder-all')))
-              .dy,
-        ),
-      );
-      expect(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('chat-list-folder-all')))
-            .dy,
-        lessThan(tester.getTopLeft(find.text('Work chat')).dy),
-      );
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-all')));
       await tester.pump();
@@ -557,6 +560,23 @@ void main() {
       expect(
         tester.getTopLeft(work).dy,
         lessThan(tester.getTopLeft(personal).dy),
+      );
+
+      await tester.binding.setSurfaceSize(const Size(420, 800));
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey('chat-list-group-column')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('chat-list-folder-column')),
+        findsNothing,
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('chat-list-folder-3'))).height,
+        tester
+            .getSize(find.byKey(const ValueKey('chat-list-folder-chat-all-11')))
+            .height,
       );
 
       await tester.pumpWidget(const SizedBox.shrink());
