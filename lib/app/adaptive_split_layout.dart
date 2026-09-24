@@ -15,12 +15,20 @@ const double splitResizeHandleWidth = 8;
 const double desktopNavigationRailWidth = 58;
 const double desktopConversationMinWidth = 440;
 
-/// Fixed rails in front of the desktop chat list: local groups, then folders.
-const double chatListGroupColumnWidth = 92;
-const double chatListFolderColumnWidth = 176;
+/// Local-group rail: 12px side padding, a 16px icon, an 8px gap, and a short
+/// name. Longer names ellipsize.
+const double chatListGroupColumnWidth = 104;
+
+/// Folder rail, same icon row with a little more room for the label.
+const double chatListFolderColumnWidth = 128;
 
 double get chatListFolderChromeWidth =>
     chatListGroupColumnWidth + chatListFolderColumnWidth;
+
+/// Narrowest chat column once the rails are beside it. This is the same floor
+/// the chat list had before the rails existed, so a 420px list still falls
+/// back to in-list rows instead of squeezing titles.
+const double chatListColumnMinWidth = splitSidebarMinWidth;
 
 /// True when [chromeWidth] can sit with the list pane and still leave the
 /// conversation its minimum width.
@@ -32,11 +40,12 @@ bool chatListFolderChromeFits({
 }) {
   if (chromeWidth <= 0) return false;
   final geometry = resolveDesktopShellGeometry(
-    totalWidth: totalWidth - chromeWidth,
+    totalWidth: totalWidth,
     requestedSidebarWidth: requestedSidebarWidth,
     infoPaneRequested: infoPaneRequested,
+    folderChromeWidth: chromeWidth,
   );
-  return geometry.showListPane;
+  return geometry.folderChromeWidth > 0;
 }
 
 /// Mouse-oriented group context pane. The width leaves enough room for member
@@ -51,12 +60,21 @@ class DesktopShellGeometry {
     required this.showInfoPane,
     required this.sidebarWidth,
     required this.conversationWidth,
+    this.folderChromeWidth = 0,
   });
 
   final bool showListPane;
   final bool showInfoPane;
+
+  /// Chat-list column. Folder rails are [folderChromeWidth], not part of this.
   final double sidebarWidth;
   final double conversationWidth;
+
+  /// Rail width actually placed in front of the chat column. Zero when the
+  /// rails would push the conversation below its minimum.
+  final double folderChromeWidth;
+
+  double get listPaneWidth => sidebarWidth + folderChromeWidth;
 }
 
 bool usesDesktopShellLayout(
@@ -102,6 +120,7 @@ DesktopShellGeometry resolveDesktopShellGeometry({
   required double requestedSidebarWidth,
   bool infoPaneRequested = false,
   double infoPaneWidth = desktopInfoPaneWidth,
+  double folderChromeWidth = 0,
 }) {
   final availableAfterRail = math.max(
     0.0,
@@ -116,26 +135,49 @@ DesktopShellGeometry resolveDesktopShellGeometry({
     );
   }
 
-  final sidebarWidth = constrainSplitSidebarWidth(
+  // Split the window the way it was split when the list pane was only the
+  // chat column. Rails borrow that column before they borrow the conversation.
+  final baselineSidebar = constrainSplitSidebarWidth(
     requestedWidth: requestedSidebarWidth,
     totalWidth: availableAfterRail,
   );
+  var chrome = math.max(0.0, folderChromeWidth);
+  var sidebarWidth = baselineSidebar;
+  if (chrome > 0) {
+    final maxListPane = math.max(
+      splitSidebarMinWidth,
+      availableAfterRail - desktopConversationMinWidth,
+    );
+    final minListPane = chatListColumnMinWidth + chrome;
+    if (minListPane > maxListPane) {
+      chrome = 0;
+    } else {
+      final listPane = math.min(
+        math.max(baselineSidebar, minListPane),
+        maxListPane,
+      );
+      sidebarWidth = listPane - chrome;
+    }
+  }
+
+  final listPane = sidebarWidth + chrome;
   final showInfoPane =
       infoPaneRequested &&
       canShowDesktopInfoPane(
         totalWidth: totalWidth,
-        sidebarWidth: sidebarWidth,
+        sidebarWidth: listPane,
         infoPaneWidth: infoPaneWidth,
       );
   final conversationWidth =
       availableAfterRail -
-      sidebarWidth -
+      listPane -
       (showInfoPane ? desktopInfoPaneHandleWidth + infoPaneWidth : 0);
   return DesktopShellGeometry(
     showListPane: true,
     showInfoPane: showInfoPane,
     sidebarWidth: sidebarWidth,
     conversationWidth: conversationWidth,
+    folderChromeWidth: chrome,
   );
 }
 

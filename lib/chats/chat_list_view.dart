@@ -2021,7 +2021,7 @@ class _ChatListViewState extends State<ChatListView>
       builder: (context, constraints) {
         _threeColumnChrome =
             folderChrome > 0 &&
-            constraints.maxWidth >= folderChrome + splitSidebarMinWidth;
+            constraints.maxWidth >= folderChrome + chatListColumnMinWidth;
         final scopeId = _resolvedFolderScopeId();
         return Stack(
           clipBehavior: Clip.none,

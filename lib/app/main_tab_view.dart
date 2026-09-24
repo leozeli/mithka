@@ -1045,24 +1045,15 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                     final sidebarRequest =
                         requestedWidth ??
                         defaultSplitSidebarWidth(contentWidth);
-                    final chrome =
-                        chatListFolderChromeFits(
-                          totalWidth: size.width,
-                          requestedSidebarWidth: sidebarRequest,
-                          chromeWidth: requestedChrome,
-                          infoPaneRequested: infoPaneRequested,
-                        )
-                        ? requestedChrome
-                        : 0.0;
                     final geometry = resolveDesktopShellGeometry(
-                      totalWidth: size.width - chrome,
-                      requestedSidebarWidth:
-                          requestedWidth ??
-                          defaultSplitSidebarWidth(contentWidth - chrome),
+                      totalWidth: size.width,
+                      requestedSidebarWidth: sidebarRequest,
                       infoPaneRequested: infoPaneRequested,
+                      folderChromeWidth: requestedChrome,
                     );
                     _desktopListPaneVisible = geometry.showListPane;
-                    final listPaneWidth = geometry.sidebarWidth + chrome;
+                    final chrome = geometry.folderChromeWidth;
+                    final listPaneWidth = geometry.listPaneWidth;
                     final canToggleInfoPane =
                         geometry.showListPane &&
                         selectedChat != null &&
@@ -1070,9 +1061,6 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                           totalWidth: size.width,
                           sidebarWidth: listPaneWidth,
                         );
-                    final contextPaneExtent = geometry.showInfoPane
-                        ? desktopInfoPaneHandleWidth + desktopInfoPaneWidth
-                        : 0.0;
                     return Stack(
                       children: [
                         Row(
@@ -1084,21 +1072,22 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                                 width: listPaneWidth,
                                 child: sidebarPane,
                               ),
-                            SizedBox(
-                              key: const ValueKey('desktop-conversation-pane'),
-                              width:
-                                  geometry.conversationWidth +
-                                  contextPaneExtent,
-                              child: geometry.showListPane || hasDesktopDetail
-                                  ? conversationPane(
-                                      showBackButton:
-                                          desktopDetailNeedsBackButton(
-                                            geometry,
-                                          ),
-                                      showInfoPane: geometry.showInfoPane,
-                                      canToggleInfoPane: canToggleInfoPane,
-                                    )
-                                  : sidebarOnlyPane,
+                            Expanded(
+                              child: KeyedSubtree(
+                                key: const ValueKey(
+                                  'desktop-conversation-pane',
+                                ),
+                                child: geometry.showListPane || hasDesktopDetail
+                                    ? conversationPane(
+                                        showBackButton:
+                                            desktopDetailNeedsBackButton(
+                                              geometry,
+                                            ),
+                                        showInfoPane: geometry.showInfoPane,
+                                        canToggleInfoPane: canToggleInfoPane,
+                                      )
+                                    : sidebarOnlyPane,
+                              ),
                             ),
                           ],
                         ),
@@ -1111,8 +1100,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                             top: 0,
                             bottom: 0,
                             child: _splitResizeHandle(
-                              totalWidth: contentWidth - chrome,
-                              sidebarWidth: geometry.sidebarWidth,
+                              totalWidth: contentWidth,
+                              sidebarWidth: listPaneWidth,
+                              minimumWidth: chrome > 0
+                                  ? chatListColumnMinWidth + chrome
+                                  : splitSidebarMinWidth,
                             ),
                           ),
                       ],
@@ -1253,6 +1245,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   Widget _splitResizeHandle({
     required double totalWidth,
     required double sidebarWidth,
+    double minimumWidth = splitSidebarMinWidth,
   }) {
     return _SplitResizeHandle(
       onDragStart: () {
@@ -1260,9 +1253,13 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       },
       onDragUpdate: (delta) {
         final current = _splitSidebarWidth.value ?? sidebarWidth;
-        _splitSidebarWidth.value = constrainSplitSidebarWidth(
-          requestedWidth: current + delta,
-          totalWidth: totalWidth,
+        final maxWidth = math.max(
+          minimumWidth,
+          totalWidth - splitDetailMinWidth,
+        );
+        _splitSidebarWidth.value = (current + delta).clamp(
+          minimumWidth,
+          maxWidth,
         );
       },
       onDragEnd: () => unawaited(_persistDesktopSidebarWidth()),

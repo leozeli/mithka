@@ -189,7 +189,12 @@ void main() {
   });
 
   test('folder columns fit only when the conversation keeps its minimum', () {
-    expect(chatListFolderChromeWidth, 268);
+    expect(
+      chatListFolderChromeWidth,
+      chatListGroupColumnWidth + chatListFolderColumnWidth,
+    );
+    expect(chatListGroupColumnWidth, lessThan(120));
+    expect(chatListFolderColumnWidth, lessThan(150));
     expect(
       chatListFolderChromeFits(
         totalWidth: 1100,
@@ -206,6 +211,64 @@ void main() {
       ),
       isFalse,
     );
+  });
+
+  test('folder rails borrow the chat column before the conversation', () {
+    const window = 1280.0;
+    final requested = defaultSplitSidebarWidth(
+      window - desktopNavigationRailWidth,
+    );
+    final baseline = resolveDesktopShellGeometry(
+      totalWidth: window,
+      requestedSidebarWidth: requested,
+    );
+    final folderOnly = resolveDesktopShellGeometry(
+      totalWidth: window,
+      requestedSidebarWidth: requested,
+      folderChromeWidth: chatListFolderColumnWidth,
+    );
+
+    final folderSlack = baseline.sidebarWidth - chatListColumnMinWidth;
+    final folderStolen =
+        baseline.conversationWidth - folderOnly.conversationWidth;
+    expect(folderOnly.folderChromeWidth, chatListFolderColumnWidth);
+    expect(folderOnly.sidebarWidth, chatListColumnMinWidth);
+    expect(
+      folderStolen,
+      closeTo(chatListFolderColumnWidth - folderSlack, 0.01),
+    );
+    expect(folderStolen, lessThan(chatListFolderColumnWidth));
+
+    final bothRails = resolveDesktopShellGeometry(
+      totalWidth: window,
+      requestedSidebarWidth: requested,
+      folderChromeWidth: chatListFolderChromeWidth,
+    );
+    final slack = baseline.sidebarWidth - chatListColumnMinWidth;
+    final stolen = baseline.conversationWidth - bothRails.conversationWidth;
+    expect(bothRails.sidebarWidth, chatListColumnMinWidth);
+    expect(stolen, closeTo(chatListFolderChromeWidth - slack, 0.01));
+    expect(stolen, lessThan(chatListFolderChromeWidth));
+    expect(
+      bothRails.conversationWidth,
+      greaterThan(desktopConversationMinWidth + 80),
+    );
+  });
+
+  test('a rail that fits in the list leaves the conversation width alone', () {
+    final baseline = resolveDesktopShellGeometry(
+      totalWidth: 1600,
+      requestedSidebarWidth: 420,
+    );
+    final withRail = resolveDesktopShellGeometry(
+      totalWidth: 1600,
+      requestedSidebarWidth: 420,
+      folderChromeWidth: 80,
+    );
+
+    expect(withRail.conversationWidth, baseline.conversationWidth);
+    expect(withRail.listPaneWidth, baseline.sidebarWidth);
+    expect(withRail.sidebarWidth, 340);
   });
 
   test('desktop info fit uses the actual sidebar width', () {

@@ -429,6 +429,105 @@ void main() {
     }
   });
 
+  testWidgets(
+    'desktop folder rail keeps the conversation width of the old split',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      try {
+        const size = Size(1280, 800);
+        await _setSurfaceSize(tester, size);
+        await _pumpMainShell(tester, reducedMotion: true);
+        TdClient.shared.emitLocalUpdate({
+          '@type': 'updateChatFolders',
+          'chat_folders': [
+            {
+              'id': 1,
+              'title': 'Work',
+              'icon': {'name': 'Work'},
+            },
+            {
+              'id': 2,
+              'title': 'Home',
+              'icon': {'name': 'Home'},
+            },
+          ],
+        });
+        await tester.pump();
+        await tester.pump();
+
+        final requested = defaultSplitSidebarWidth(
+          size.width - desktopNavigationRailWidth,
+        );
+        final baseline = resolveDesktopShellGeometry(
+          totalWidth: size.width,
+          requestedSidebarWidth: requested,
+        );
+        final fitted = resolveDesktopShellGeometry(
+          totalWidth: size.width,
+          requestedSidebarWidth: requested,
+          folderChromeWidth: chatListFolderColumnWidth,
+        );
+        expect(
+          find.byKey(const ValueKey('chat-list-folder-column')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('chat-list-group-column')),
+          findsNothing,
+        );
+        final listWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-list-pane')))
+            .width;
+        final conversationWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-conversation-pane')))
+            .width;
+        final railWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-navigation-rail')))
+            .width;
+        expect(listWidth, closeTo(fitted.listPaneWidth, 0.5));
+        expect(conversationWidth, closeTo(fitted.conversationWidth, 0.5));
+        // The folder rail is taken from the chat column first, so the
+        // conversation gives up less than the rail's own width.
+        expect(
+          baseline.conversationWidth - conversationWidth,
+          lessThan(chatListFolderColumnWidth),
+        );
+        expect(
+          conversationWidth,
+          greaterThan(desktopConversationMinWidth + 200),
+        );
+        expect(
+          railWidth + listWidth + conversationWidth,
+          closeTo(size.width, 0.5),
+        );
+        expect(tester.takeException(), isNull);
+
+        ChatDeepLinkController.shared.openChat(chatId: 41, title: 'Open chat');
+        await tester.pump();
+        await tester.pump();
+        _discardMissingTdlibErrors(tester);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('desktop-conversation-pane')),
+            matching: find.byType(ChatView),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Open chat'), findsWidgets);
+        expect(
+          tester
+              .getSize(find.byKey(const ValueKey('desktop-conversation-pane')))
+              .width,
+          closeTo(fitted.conversationWidth, 0.5),
+        );
+        expect(tester.takeException(), isNull);
+        await _disposeShell(tester);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
+
   testWidgets('narrow macOS keeps the rail and collapses the list column', (
     tester,
   ) async {
