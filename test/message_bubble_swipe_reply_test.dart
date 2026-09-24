@@ -81,6 +81,13 @@ void main() {
         ),
       ),
     );
+    // Desktop selection is attached on the frame after the text lays out, so
+    // a drag in the same pump would miss the selection area.
+    if (platform == TargetPlatform.linux ||
+        platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.windows) {
+      await tester.pump();
+    }
     return () => replied;
   }
 

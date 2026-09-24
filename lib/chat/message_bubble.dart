@@ -62,6 +62,47 @@ import 'voice_audio.dart';
 typedef ImageGalleryOpenCallback =
     void Function({required List<TdFileRef> items, required int startIndex});
 
+/// Selection geometry reads every paragraph's size. A desktop bubble is often
+/// built in the same turn the conversation pane changes width, before those
+/// paragraphs have been laid out, and the framework asserts if it sorts them
+/// then. The text paints immediately; selection starts on the next frame.
+class _DeferredDesktopSelectionArea extends StatefulWidget {
+  const _DeferredDesktopSelectionArea({
+    required this.selectionKey,
+    required this.child,
+  });
+
+  final Key selectionKey;
+  final Widget child;
+
+  @override
+  State<_DeferredDesktopSelectionArea> createState() =>
+      _DeferredDesktopSelectionAreaState();
+}
+
+class _DeferredDesktopSelectionAreaState
+    extends State<_DeferredDesktopSelectionArea> {
+  var _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _ready = true);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) return widget.child;
+    return SelectionArea(
+      key: widget.selectionKey,
+      contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+      child: widget.child,
+    );
+  }
+}
+
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
     super.key,
@@ -963,9 +1004,8 @@ class _MessageBubbleState extends State<MessageBubble>
                 onPointerCancel: _handleDesktopPointerCancel,
                 child: KeyedSubtree(
                   key: ValueKey('messageTextSelectionArea-${message.id}'),
-                  child: SelectionArea(
-                    key: _desktopSelectionAreaKey,
-                    contextMenuBuilder: (_, _) => const SizedBox.shrink(),
+                  child: _DeferredDesktopSelectionArea(
+                    selectionKey: _desktopSelectionAreaKey,
                     child: contentBody,
                   ),
                 ),

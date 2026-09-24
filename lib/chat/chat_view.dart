@@ -1981,11 +1981,10 @@ class _ChatViewState extends State<ChatView> {
   }
 
   ({int messageId, double viewportOffset})? _captureSessionScrollAnchor() {
-    final viewportContext = _transcriptViewportKey.currentContext;
-    final viewportRenderObject = viewportContext?.findRenderObject();
-    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
-      return null;
-    }
+    final viewportRenderObject = laidOutBoxOf(
+      _transcriptViewportKey.currentContext,
+    );
+    if (viewportRenderObject == null) return null;
     // Viewport-local coordinates: the offset is already relative to the
     // viewport top, and stopping the transform walk at the viewport avoids the
     // full ancestor chain per row.
@@ -1996,9 +1995,7 @@ class _ChatViewState extends State<ChatView> {
     double? partialAnchorTop;
     for (final entry in _mountedTranscriptEntries.entries) {
       final itemRenderObject = entry.value;
-      if (!itemRenderObject.attached) {
-        continue;
-      }
+      if (!isLaidOutBox(itemRenderObject)) continue;
       final itemTop = itemRenderObject
           .localToGlobal(Offset.zero, ancestor: viewportRenderObject)
           .dy;
@@ -2034,11 +2031,10 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _updateUnreadProgressFromViewport() {
-    final viewportContext = _transcriptViewportKey.currentContext;
-    final viewportRenderObject = viewportContext?.findRenderObject();
-    if (viewportRenderObject is! RenderBox || !viewportRenderObject.attached) {
-      return;
-    }
+    final viewportRenderObject = laidOutBoxOf(
+      _transcriptViewportKey.currentContext,
+    );
+    if (viewportRenderObject == null) return;
     // Measured in the viewport's own space: a root-relative localToGlobal walks
     // and multiplies the whole ancestor transform chain for every mounted row,
     // once per scroll frame.
@@ -2048,9 +2044,7 @@ class _ChatViewState extends State<ChatView> {
 
     for (final entry in _mountedTranscriptEntries.entries) {
       final itemRenderObject = entry.value;
-      if (!itemRenderObject.attached) {
-        continue;
-      }
+      if (!isLaidOutBox(itemRenderObject)) continue;
       final itemOrigin = itemRenderObject.localToGlobal(
         Offset.zero,
         ancestor: viewportRenderObject,
@@ -2087,8 +2081,12 @@ class _ChatViewState extends State<ChatView> {
     if (changed && mounted) setState(() {});
   }
 
+  bool get _transcriptViewportLaidOut =>
+      laidOutBoxOf(_transcriptViewportKey.currentContext) != null;
+
   bool _isNearBottom([double threshold = 160]) {
     if (!_scroll.hasClients) return true;
+    if (!_transcriptViewportLaidOut) return false;
     final position = _scroll.position;
     if (_showingFullyVisibleFirstContactHistory &&
         (position.pixels - position.minScrollExtent).abs() <= 1) {
@@ -2105,13 +2103,8 @@ class _ChatViewState extends State<ChatView> {
     if (_vm.isLoadingLatest) return position.maxScrollExtent;
     final latestId = _transcriptCache?.lastOrNull?.last.id;
     final latest = _mountedTranscriptEntries[latestId];
-    final viewport = _transcriptViewportKey.currentContext?.findRenderObject();
-    if (latest != null &&
-        latest.attached &&
-        latest.hasSize &&
-        viewport is RenderBox &&
-        viewport.attached &&
-        viewport.hasSize) {
+    final viewport = laidOutBoxOf(_transcriptViewportKey.currentContext);
+    if (latest != null && isLaidOutBox(latest) && viewport != null) {
       final bottom = latest
           .localToGlobal(Offset(0, latest.size.height), ancestor: viewport)
           .dy;
@@ -3603,7 +3596,7 @@ class _ChatViewState extends State<ChatView> {
   }
 
   void _scrollToBottom() {
-    if (!_scroll.hasClients) return;
+    if (!_scroll.hasClients || !_transcriptViewportLaidOut) return;
     _cancelSessionScrollAnchorMaintenance();
     _autoScrollPolicy.requestReturnToBottom();
     if (_positionShortFirstContactHistoryIfItFits(requireAtLatest: false)) {

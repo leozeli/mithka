@@ -1056,87 +1056,103 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                 return ValueListenableBuilder<double?>(
                   valueListenable: _splitSidebarWidth,
                   builder: (context, requestedWidth, _) {
-                    // The window size is read here, not in the root build, so a
-                    // resize frame rebuilds these two pane widths instead of the
-                    // whole shell.
-                    final size = MediaQuery.sizeOf(context);
-                    final contentWidth =
-                        size.width - desktopNavigationRailWidth;
-                    final sidebarRequest =
-                        requestedWidth ??
-                        defaultSplitSidebarWidth(contentWidth);
-                    final geometry = resolveDesktopShellGeometry(
-                      totalWidth: size.width,
-                      requestedSidebarWidth: sidebarRequest,
-                      infoPaneRequested: infoPaneRequested,
-                      folderChromeWidth: requestedChrome,
-                    );
-                    _desktopListPaneVisible = geometry.showListPane;
-                    if (geometry.showListPane &&
-                        _selectedChannelDetail != null) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted || _selectedChannelDetail == null) {
-                          return;
-                        }
-                        setState(() => _selectedChannelDetail = null);
-                      });
-                    }
-                    final chrome = geometry.folderChromeWidth;
-                    final listPaneWidth = geometry.listPaneWidth;
-                    final canToggleInfoPane =
-                        geometry.showListPane &&
-                        selectedChat != null &&
-                        canShowDesktopInfoPane(
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        // The window size is read here, not in the root build,
+                        // so a resize frame rebuilds these two pane widths
+                        // instead of the whole shell. The builder's own
+                        // constraints win when they are tighter than the
+                        // window, which is the slot the row actually lays out.
+                        final media = MediaQuery.sizeOf(context);
+                        final width = constraints.maxWidth.isFinite
+                            ? constraints.maxWidth
+                            : media.width;
+                        final height = constraints.maxHeight.isFinite
+                            ? constraints.maxHeight
+                            : media.height;
+                        final size = Size(width, height);
+                        final contentWidth =
+                            size.width - desktopNavigationRailWidth;
+                        final sidebarRequest =
+                            requestedWidth ??
+                            defaultSplitSidebarWidth(contentWidth);
+                        final geometry = resolveDesktopShellGeometry(
                           totalWidth: size.width,
-                          sidebarWidth: listPaneWidth,
+                          requestedSidebarWidth: sidebarRequest,
+                          infoPaneRequested: infoPaneRequested,
+                          folderChromeWidth: requestedChrome,
                         );
-                    return Stack(
-                      children: [
-                        Row(
-                          children: [
-                            rail,
-                            if (geometry.showListPane)
-                              SizedBox(
-                                key: const ValueKey('desktop-list-pane'),
-                                width: listPaneWidth,
-                                child: sidebarPane,
-                              ),
-                            Expanded(
-                              child: KeyedSubtree(
-                                key: const ValueKey(
-                                  'desktop-conversation-pane',
-                                ),
-                                child: geometry.showListPane || hasDesktopDetail
-                                    ? conversationPane(
-                                        showBackButton:
-                                            desktopDetailNeedsBackButton(
-                                              geometry,
-                                            ),
-                                        showInfoPane: geometry.showInfoPane,
-                                        canToggleInfoPane: canToggleInfoPane,
-                                      )
-                                    : sidebarOnlyPane,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (geometry.showListPane)
-                          Positioned(
-                            left:
-                                desktopNavigationRailWidth +
-                                listPaneWidth -
-                                splitResizeHandleWidth / 2,
-                            top: 0,
-                            bottom: 0,
-                            child: _splitResizeHandle(
-                              totalWidth: contentWidth,
+                        _desktopListPaneVisible = geometry.showListPane;
+                        if (geometry.showListPane &&
+                            _selectedChannelDetail != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted || _selectedChannelDetail == null) {
+                              return;
+                            }
+                            setState(() => _selectedChannelDetail = null);
+                          });
+                        }
+                        final chrome = geometry.folderChromeWidth;
+                        final listPaneWidth = geometry.listPaneWidth;
+                        final canToggleInfoPane =
+                            geometry.showListPane &&
+                            selectedChat != null &&
+                            canShowDesktopInfoPane(
+                              totalWidth: size.width,
                               sidebarWidth: listPaneWidth,
-                              minimumWidth: chrome > 0
-                                  ? chatListColumnMinWidth + chrome
-                                  : splitSidebarMinWidth,
+                            );
+                        return Stack(
+                          children: [
+                            Row(
+                              children: [
+                                rail,
+                                if (geometry.showListPane)
+                                  SizedBox(
+                                    key: const ValueKey('desktop-list-pane'),
+                                    width: listPaneWidth,
+                                    child: sidebarPane,
+                                  ),
+                                Expanded(
+                                  child: KeyedSubtree(
+                                    key: const ValueKey(
+                                      'desktop-conversation-pane',
+                                    ),
+                                    child:
+                                        geometry.showListPane ||
+                                            hasDesktopDetail
+                                        ? conversationPane(
+                                            showBackButton:
+                                                desktopDetailNeedsBackButton(
+                                                  geometry,
+                                                ),
+                                            showInfoPane: geometry.showInfoPane,
+                                            canToggleInfoPane:
+                                                canToggleInfoPane,
+                                          )
+                                        : sidebarOnlyPane,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                      ],
+                            if (geometry.showListPane)
+                              Positioned(
+                                left:
+                                    desktopNavigationRailWidth +
+                                    listPaneWidth -
+                                    splitResizeHandleWidth / 2,
+                                top: 0,
+                                bottom: 0,
+                                child: _splitResizeHandle(
+                                  totalWidth: contentWidth,
+                                  sidebarWidth: listPaneWidth,
+                                  minimumWidth: chrome > 0
+                                      ? chatListColumnMinWidth + chrome
+                                      : splitSidebarMinWidth,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   },
                 );
