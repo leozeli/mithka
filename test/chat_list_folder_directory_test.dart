@@ -7,7 +7,6 @@ import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/chat_list_view_model.dart';
 import 'package:mithka/chats/local_folder_group.dart';
-import 'package:mithka/components/app_icons.dart';
 import 'package:mithka/components/chat_folder_icons.dart';
 import 'package:mithka/l10n/app_localizations.dart';
 import 'package:mithka/tdlib/td_client.dart';
@@ -398,12 +397,15 @@ void main() {
       expect(workTitle.style?.fontSize, AppTextSize.footnote);
       expect(workTitle.style?.fontWeight, FontWeight.w500);
       expect(
-        find.descendant(of: workHeader, matching: find.byType(ChatFolderIcon)),
-        findsNothing,
-      );
-      expect(
-        find.descendant(of: workHeader, matching: find.byType(AppIcon)),
-        findsNothing,
+        tester
+            .widget<ChatFolderIcon>(
+              find.descendant(
+                of: workHeader,
+                matching: find.byType(ChatFolderIcon),
+              ),
+            )
+            .name,
+        'Work',
       );
       expect(tester.widget<ChatListFolderHeader>(workHeader).selected, isFalse);
       expect(
@@ -413,6 +415,17 @@ void main() {
       expect(tester.getSize(workHeader).height, chatListFolderRailExtent);
       final allHeader = find.byKey(const ValueKey('chat-list-folder-all'));
       expect(tester.widget<ChatListFolderHeader>(allHeader).selected, isTrue);
+      expect(
+        tester
+            .widget<ChatFolderIcon>(
+              find.descendant(
+                of: allHeader,
+                matching: find.byType(ChatFolderIcon),
+              ),
+            )
+            .name,
+        'All',
+      );
       expect(
         tester.getSize(find.byKey(const ValueKey<int>(11))).height,
         greaterThan(tester.getSize(allHeader).height),
@@ -489,8 +502,15 @@ void main() {
       );
       expect(tester.widget<ChatListFolderHeader>(focusHeader).selected, isTrue);
       expect(
-        find.descendant(of: focusHeader, matching: find.byType(AppIcon)),
-        findsNothing,
+        tester
+            .widget<ChatFolderIcon>(
+              find.descendant(
+                of: focusHeader,
+                matching: find.byType(ChatFolderIcon),
+              ),
+            )
+            .name,
+        'Custom',
       );
       expect(
         tester.getTopLeft(focusHeader).dx,
@@ -576,9 +596,30 @@ void main() {
       );
       expect(
         tester.getSize(find.byKey(const ValueKey('chat-list-folder-3'))).height,
+        chatListFolderRailExtent,
+      );
+      expect(
         tester
-            .getSize(find.byKey(const ValueKey('chat-list-folder-chat-all-11')))
+            .widget<ChatFolderIcon>(
+              find.descendant(
+                of: find.byKey(const ValueKey('chat-list-folder-3')),
+                matching: find.byType(ChatFolderIcon),
+              ),
+            )
+            .name,
+        'Work',
+      );
+      expect(
+        tester
+            .getSize(find.byKey(const ValueKey('chat-list-folder-all')))
             .height,
+        lessThan(
+          tester
+              .getSize(
+                find.byKey(const ValueKey('chat-list-folder-chat-all-11')),
+              )
+              .height,
+        ),
       );
 
       await tester.pumpWidget(const SizedBox.shrink());

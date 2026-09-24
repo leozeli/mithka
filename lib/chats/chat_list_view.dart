@@ -2130,9 +2130,8 @@ class _ChatListViewState extends State<ChatListView>
                   _directoryHeader(
                     key: ValueKey('chat-list-group-${groups[index].id}'),
                     title: groups[index].title,
+                    iconName: groups[index].iconName,
                     selected: scopeId == groups[index].id,
-                    compact: true,
-                    centered: true,
                     dragToken: 'g:${groups[index].id}',
                     actions: _localGroupActions(groups[index]),
                     onTap: () => _selectFolderScope(
@@ -2186,8 +2185,8 @@ class _ChatListViewState extends State<ChatListView>
                 )
                 .title
                 .l10n(context),
+            iconName: 'All',
             selected: _model.isAllFilter,
-            compact: true,
             actions: _allSectionActions(),
             onTap: () => _selectDirectoryFilter(
               _model.filters.firstWhere(
@@ -2200,8 +2199,8 @@ class _ChatListViewState extends State<ChatListView>
             _directoryHeader(
               key: ValueKey('chat-list-folder-${filter.folderId}'),
               title: filter.title.l10n(context),
+              iconName: filter.iconName,
               selected: _model.selectedFilter.folderId == filter.folderId,
-              compact: true,
               dragToken: 'f:${filter.folderId}',
               actions: _folderSectionActions(filter),
               onTap: () => _selectDirectoryFilter(filter),
@@ -2803,7 +2802,7 @@ class _ChatListViewState extends State<ChatListView>
       child: LayoutBuilder(
         builder: (context, geo) {
           final rowHeight = chatListRowExtentFor(context);
-          final headerHeight = chatListFolderHeaderExtent(context);
+          final headerHeight = chatListFolderHeaderExtent();
           final visibleRows = math.max(
             1,
             (geo.maxHeight / (rowHeight + 0.5)).ceil(),
@@ -2908,6 +2907,7 @@ class _ChatListViewState extends State<ChatListView>
           key: ValueKey('chat-list-group-${group.id}'),
           dragToken: 'g:${group.id}',
           title: group.title,
+          iconName: group.iconName,
           expanded: slot.expanded,
           showsChevron: true,
           indent: slot.indent,
@@ -2926,6 +2926,7 @@ class _ChatListViewState extends State<ChatListView>
           key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
           dragToken: slot.folderId == null ? null : 'f:${slot.folderId}',
           title: filter.title.l10n(context),
+          iconName: filter.isAll ? 'All' : filter.iconName,
           selected: slot.selected,
           indent: slot.indent,
           onTap: () => _selectDirectoryFilter(filter),
@@ -2990,11 +2991,10 @@ class _ChatListViewState extends State<ChatListView>
     required VoidCallback onTap,
     required List<DesktopRowAction> actions,
     double indent = 0,
+    String iconName = 'Custom',
     bool expanded = false,
     bool showsChevron = false,
     bool selected = false,
-    bool compact = false,
-    bool centered = false,
     String? dragToken,
     VoidCallback? onSecondaryTap,
   }) {
@@ -3007,11 +3007,10 @@ class _ChatListViewState extends State<ChatListView>
         ? ChatListFolderHeader(
             key: key,
             title: title,
+            iconName: iconName,
             expanded: expanded,
             showsChevron: showsChevron,
             selected: selected,
-            compact: compact,
-            centered: centered,
             onTap: onTap,
             onSecondaryTap: desktop ? null : onSecondaryTap,
           )
@@ -3020,10 +3019,9 @@ class _ChatListViewState extends State<ChatListView>
             enabled: sections.length > 1,
             token: token,
             title: title,
+            iconName: iconName,
             expanded: expanded,
             showsChevron: showsChevron,
-            compact: compact,
-            centered: centered,
             highlight: _sectionDropHighlight,
             resolveTarget: (global) =>
                 _sectionTargetAt(global, sections, token),
@@ -3033,11 +3031,10 @@ class _ChatListViewState extends State<ChatListView>
               return ChatListFolderHeader(
                 key: key,
                 title: title,
+                iconName: iconName,
                 expanded: expanded,
                 showsChevron: showsChevron,
                 selected: selected,
-                compact: compact,
-                centered: centered,
                 draggable: sections.length > 1,
                 dragging: dragging,
                 highlighted: highlighted,
