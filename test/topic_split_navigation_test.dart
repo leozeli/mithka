@@ -7,7 +7,6 @@ import 'package:mithka/app/chat_deep_link_controller.dart';
 import 'package:mithka/app/main_tab_view.dart';
 import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
-import 'package:mithka/channels/topic_channels_view.dart';
 import 'package:mithka/channels/topic_chat_view.dart';
 import 'package:mithka/chat/chat_members_view.dart';
 import 'package:mithka/chat/chat_view.dart';
@@ -291,7 +290,7 @@ void main() {
   );
 
   testWidgets(
-    'channel-feed topic can switch modes and return without replacing the app route',
+    'subscriptions sidebar stays beside the timeline without a new route',
     (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
       try {
@@ -305,36 +304,26 @@ void main() {
           find.byKey(const ValueKey('desktop-navigation-item-1')),
         );
         await _settle(tester);
-        tester
-            .widget<TopicChannelsView>(find.byType(TopicChannelsView))
-            .onOpenDetail!(
-          TopicChatView(
-            chat: _chat(),
-            initialThreadId: 77,
-            initialMessageId: 70,
-            showBackButton: false,
-          ),
+        final sidebar = tester.getRect(
+          find.byKey(const ValueKey('subscriptions-source-pane')),
         );
-        await _settle(tester);
-        final sidebar = tester.getRect(find.byType(TopicChannelsView));
+        expect(
+          find.byKey(const ValueKey('tablet-subscriptions-timeline')),
+          findsOneWidget,
+        );
         final navigator = Navigator.of(
-          tester.element(find.byType(TopicChatView)),
+          tester.element(
+            find.byKey(const ValueKey('subscriptions-source-pane')),
+          ),
           rootNavigator: true,
         );
-        await tester.tap(find.byKey(const ValueKey('topic-header-chat-mode')));
-        await _settle(tester);
-        expect(find.byType(ChatView), findsOneWidget);
         expect(navigator.canPop(), isFalse);
-        expect(tester.getRect(find.byType(TopicChannelsView)), sidebar);
-        await tester.tap(find.byKey(const ValueKey('chatHeaderSearch')));
-        await tester.pump();
-        await navigator.maybePop();
-        await _settle(tester);
-        expect(find.byType(ChatView), findsOneWidget);
-        tester.widget<ChatView>(find.byType(ChatView)).onBack!();
-        await _settle(tester);
-        expect(find.byType(TopicChatView), findsOneWidget);
-        expect(tester.getRect(find.byType(TopicChannelsView)), sidebar);
+        expect(
+          tester.getRect(
+            find.byKey(const ValueKey('subscriptions-source-pane')),
+          ),
+          sidebar,
+        );
         expect(tester.takeException(), isNull);
         await _disposeShell(tester);
       } finally {

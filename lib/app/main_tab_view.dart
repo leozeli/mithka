@@ -17,7 +17,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
-import '../channels/topic_channels_view.dart';
 import '../channels/topic_chat_view.dart';
 import '../chat/chat_info_view.dart';
 import '../chat/chat_members_view.dart';
@@ -44,6 +43,8 @@ import '../profile/profile_view.dart';
 import '../settings/desktop_hotkey_controller.dart';
 import '../settings/settings_view.dart';
 import '../settings/topic_group_display_mode.dart';
+import '../subscriptions/subscription_feed_controller.dart';
+import '../subscriptions/subscriptions_view.dart';
 import '../tdlib/json_helpers.dart';
 import '../tdlib/td_client.dart';
 import '../tdlib/td_models.dart';
@@ -110,6 +111,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
   ArchivedChatListSelection? _selectedArchivedChats;
   int? _closedDesktopInfoChatId;
   Widget? _selectedChannelDetail;
+  final _subscriptions = SubscriptionFeedController();
   Widget? _selectedContactDetail;
   Widget? _selectedMomentDetail;
   ChatDeepLinkController? _chatDeepLinks;
@@ -224,6 +226,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     _chatDeepLinks?.removeListener(_handlePendingChatDeepLink);
     _androidShareIntent.removeListener(_handleAndroidShareIntentChanged);
     _chatListController.dispose();
+    _subscriptions.dispose();
     _unread.dispose();
     _tabBar.dispose();
     _splitSidebarWidth.dispose();
@@ -351,7 +354,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   static const _allTabs = [
     _MainTabItem(0, AppStringKeys.tabMessages, HeroAppIcons.solidMessage),
-    _MainTabItem(1, AppStringKeys.tabChannels, HeroAppIcons.hashtag),
+    _MainTabItem(
+      1,
+      AppStringKeys.tabSubscriptions,
+      HeroAppIcons.towerBroadcast,
+    ),
     _MainTabItem(2, AppStringKeys.tabContacts, HeroAppIcons.users),
     _MainTabItem(3, AppStringKeys.tabMoments, HeroAppIcons.circleNotch),
   ];
@@ -371,7 +378,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
 
   Widget _root(int i) => switch (i) {
     0 => ChatListView(controller: _chatListController),
-    1 => const TopicChannelsView(),
+    1 => SubscriptionsReader(controller: _subscriptions),
     2 => const ContactsView(),
     _ => const MomentsView(),
   };
@@ -600,6 +607,19 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         chatId: userId,
       );
     }
+  }
+
+  void _revealSubscriptionsTimeline() {
+    setState(() {
+      _selectedChannelDetail = SubscriptionsTimeline(
+        controller: _subscriptions,
+        showBackButton: true,
+        onBack: () {
+          if (!mounted) return;
+          setState(() => _selectedChannelDetail = null);
+        },
+      );
+    });
   }
 
   void _clearTabletDetail(int tabIndex) {
@@ -1036,78 +1056,103 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
                 return ValueListenableBuilder<double?>(
                   valueListenable: _splitSidebarWidth,
                   builder: (context, requestedWidth, _) {
-                    // The window size is read here, not in the root build, so a
-                    // resize frame rebuilds these two pane widths instead of the
-                    // whole shell.
-                    final size = MediaQuery.sizeOf(context);
-                    final contentWidth =
-                        size.width - desktopNavigationRailWidth;
-                    final sidebarRequest =
-                        requestedWidth ??
-                        defaultSplitSidebarWidth(contentWidth);
-                    final geometry = resolveDesktopShellGeometry(
-                      totalWidth: size.width,
-                      requestedSidebarWidth: sidebarRequest,
-                      infoPaneRequested: infoPaneRequested,
-                      folderChromeWidth: requestedChrome,
-                    );
-                    _desktopListPaneVisible = geometry.showListPane;
-                    final chrome = geometry.folderChromeWidth;
-                    final listPaneWidth = geometry.listPaneWidth;
-                    final canToggleInfoPane =
-                        geometry.showListPane &&
-                        selectedChat != null &&
-                        canShowDesktopInfoPane(
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        // The window size is read here, not in the root build,
+                        // so a resize frame rebuilds these two pane widths
+                        // instead of the whole shell. The builder's own
+                        // constraints win when they are tighter than the
+                        // window, which is the slot the row actually lays out.
+                        final media = MediaQuery.sizeOf(context);
+                        final width = constraints.maxWidth.isFinite
+                            ? constraints.maxWidth
+                            : media.width;
+                        final height = constraints.maxHeight.isFinite
+                            ? constraints.maxHeight
+                            : media.height;
+                        final size = Size(width, height);
+                        final contentWidth =
+                            size.width - desktopNavigationRailWidth;
+                        final sidebarRequest =
+                            requestedWidth ??
+                            defaultSplitSidebarWidth(contentWidth);
+                        final geometry = resolveDesktopShellGeometry(
                           totalWidth: size.width,
-                          sidebarWidth: listPaneWidth,
+                          requestedSidebarWidth: sidebarRequest,
+                          infoPaneRequested: infoPaneRequested,
+                          folderChromeWidth: requestedChrome,
                         );
-                    return Stack(
-                      children: [
-                        Row(
-                          children: [
-                            rail,
-                            if (geometry.showListPane)
-                              SizedBox(
-                                key: const ValueKey('desktop-list-pane'),
-                                width: listPaneWidth,
-                                child: sidebarPane,
-                              ),
-                            Expanded(
-                              child: KeyedSubtree(
-                                key: const ValueKey(
-                                  'desktop-conversation-pane',
-                                ),
-                                child: geometry.showListPane || hasDesktopDetail
-                                    ? conversationPane(
-                                        showBackButton:
-                                            desktopDetailNeedsBackButton(
-                                              geometry,
-                                            ),
-                                        showInfoPane: geometry.showInfoPane,
-                                        canToggleInfoPane: canToggleInfoPane,
-                                      )
-                                    : sidebarOnlyPane,
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (geometry.showListPane)
-                          Positioned(
-                            left:
-                                desktopNavigationRailWidth +
-                                listPaneWidth -
-                                splitResizeHandleWidth / 2,
-                            top: 0,
-                            bottom: 0,
-                            child: _splitResizeHandle(
-                              totalWidth: contentWidth,
+                        _desktopListPaneVisible = geometry.showListPane;
+                        if (geometry.showListPane &&
+                            _selectedChannelDetail != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (!mounted || _selectedChannelDetail == null) {
+                              return;
+                            }
+                            setState(() => _selectedChannelDetail = null);
+                          });
+                        }
+                        final chrome = geometry.folderChromeWidth;
+                        final listPaneWidth = geometry.listPaneWidth;
+                        final canToggleInfoPane =
+                            geometry.showListPane &&
+                            selectedChat != null &&
+                            canShowDesktopInfoPane(
+                              totalWidth: size.width,
                               sidebarWidth: listPaneWidth,
-                              minimumWidth: chrome > 0
-                                  ? chatListColumnMinWidth + chrome
-                                  : splitSidebarMinWidth,
+                            );
+                        return Stack(
+                          children: [
+                            Row(
+                              children: [
+                                rail,
+                                if (geometry.showListPane)
+                                  SizedBox(
+                                    key: const ValueKey('desktop-list-pane'),
+                                    width: listPaneWidth,
+                                    child: sidebarPane,
+                                  ),
+                                Expanded(
+                                  child: KeyedSubtree(
+                                    key: const ValueKey(
+                                      'desktop-conversation-pane',
+                                    ),
+                                    child:
+                                        geometry.showListPane ||
+                                            hasDesktopDetail
+                                        ? conversationPane(
+                                            showBackButton:
+                                                desktopDetailNeedsBackButton(
+                                                  geometry,
+                                                ),
+                                            showInfoPane: geometry.showInfoPane,
+                                            canToggleInfoPane:
+                                                canToggleInfoPane,
+                                          )
+                                        : sidebarOnlyPane,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                      ],
+                            if (geometry.showListPane)
+                              Positioned(
+                                left:
+                                    desktopNavigationRailWidth +
+                                    listPaneWidth -
+                                    splitResizeHandleWidth / 2,
+                                top: 0,
+                                bottom: 0,
+                                child: _splitResizeHandle(
+                                  totalWidth: contentWidth,
+                                  sidebarWidth: listPaneWidth,
+                                  minimumWidth: chrome > 0
+                                      ? chatListColumnMinWidth + chrome
+                                      : splitSidebarMinWidth,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     );
                   },
                 );
@@ -1275,11 +1320,11 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
         communitiesEnabled,
         desktopSidebar: desktopSidebar,
       ),
-      1 => TopicChannelsView(
+      1 => SubscriptionsReader(
+        controller: _subscriptions,
+        sidebar: true,
         desktopSidebar: desktopSidebar,
-        onOpenDetail: (detail) {
-          setState(() => _selectedChannelDetail = detail);
-        },
+        onRevealTimeline: _revealSubscriptionsTimeline,
       ),
       2 => ContactsView(
         desktopSidebar: desktopSidebar,
@@ -1375,10 +1420,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
     ),
     1 =>
       _selectedChannelDetail ??
-          const _SplitEmptyPane(
-            icon: HeroAppIcons.hashtag,
-            title: AppStringKeys.tabSelectChannelContent,
-          ),
+          SubscriptionsTimeline(controller: _subscriptions),
     2 =>
       _selectedContactDetail ??
           const _SplitEmptyPane(
@@ -1428,7 +1470,7 @@ abstract class _MainRootViewState<T extends StatefulWidget> extends State<T> {
       1 when _selectedChannelDetail != null => ObjectKey(
         _selectedChannelDetail!,
       ),
-      1 => const ValueKey('tablet-channel-empty'),
+      1 => const ValueKey('tablet-subscriptions-timeline'),
       2 when _selectedContactDetail != null => ObjectKey(
         _selectedContactDetail!,
       ),

@@ -311,6 +311,7 @@ class NavHeader extends StatelessWidget {
     this.trailingIcon,
     this.onTrailing,
     this.trailing,
+    this.localizeTitle = true,
   });
 
   final String title;
@@ -319,12 +320,16 @@ class NavHeader extends StatelessWidget {
   final VoidCallback? onTrailing;
   final Widget? trailing;
 
+  /// Feed titles and chat names are already display text. Keys stay the default.
+  final bool localizeTitle;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final metrics = context.watch<ThemeController>();
     final pointerDense = isDesktopTargetPlatform();
     final headerHeight = metrics.navHeaderHeight;
+    final resolvedTitle = localizeTitle ? title.l10n(context) : title;
     final effectiveOnBack = SettingsSplitPaneScope.isRootRoute(context)
         ? null
         : onBack;
@@ -372,7 +377,7 @@ class NavHeader extends StatelessWidget {
                 ),
               Expanded(
                 child: Text(
-                  title.l10n(context),
+                  resolvedTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: pointerDense
@@ -386,7 +391,7 @@ class NavHeader extends StatelessWidget {
               ?trailing,
               if (trailing == null && trailingIcon != null)
                 AppInteractiveSurface(
-                  semanticLabel: title.l10n(context),
+                  semanticLabel: resolvedTitle,
                   onTap: onTrailing,
                   borderRadius: BorderRadius.circular(AppRadius.sm),
                   child: Padding(

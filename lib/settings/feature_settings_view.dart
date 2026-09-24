@@ -30,7 +30,7 @@ class FeatureSettingsView extends StatelessWidget {
             titleKey: AppStringKeys.featureBottomTabs,
             rows: [
               SettingsSwitchRow(
-                title: AppStrings.t(AppStringKeys.tabChannels),
+                title: AppStrings.t(AppStringKeys.tabSubscriptions),
                 value: theme.showChannelsTab,
                 leading: const SettingsLeadingIcon(
                   icon: HeroAppIcons.towerBroadcast,

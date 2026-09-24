@@ -48,13 +48,23 @@ class _RenderTranscriptEntryBoundary extends RenderRepaintBoundary {
     if (attached) _unregister();
     _messageId = messageId;
     _mountedEntries = mountedEntries;
-    if (attached) _mountedEntries[_messageId] = this;
+    if (attached && hasSize) _mountedEntries[_messageId] = this;
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    // attach() runs before this box has a size. Scroll anchoring and selection
+    // both read size; only publish the row once layout has produced one.
+    if (attached && hasSize) {
+      _mountedEntries[_messageId] = this;
+    }
   }
 
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
-    _mountedEntries[_messageId] = this;
+    if (hasSize) _mountedEntries[_messageId] = this;
   }
 
   @override
@@ -63,3 +73,23 @@ class _RenderTranscriptEntryBoundary extends RenderRepaintBoundary {
     super.detach();
   }
 }
+
+/// A box that is in the tree and has been through layout.
+///
+/// An element stays [BuildContext.mounted] after it is deactivated and until
+/// it unmounts. [BuildContext.findRenderObject] asserts in that gap.
+RenderBox? laidOutBoxOf(BuildContext? context) {
+  if (context is! Element || !context.mounted) return null;
+  var active = true;
+  assert(() {
+    active = context.debugIsActive;
+    return true;
+  }());
+  if (!active) return null;
+  final object = context.findRenderObject();
+  if (object is! RenderBox || !isLaidOutBox(object)) return null;
+  return object;
+}
+
+bool isLaidOutBox(RenderObject? object) =>
+    object is RenderBox && object.attached && object.hasSize;
