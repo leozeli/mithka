@@ -816,6 +816,16 @@
     <string name="chatFirstContactOfficial">官方帳號</string>
     <string name="chatFirstContactPhoneCountry">手機號碼地區</string>
     <string name="chatFirstContactRegistration">註冊時間</string>
+    <string name="chatFolderGroupAddTo">新增到「{value1}」</string>
+    <string name="chatFolderGroupCreate">新增本機群組</string>
+    <string name="chatFolderGroupCreateWithFolder">以此資料夾建立本機群組</string>
+    <string name="chatFolderGroupDelete">刪除本機群組</string>
+    <string name="chatFolderGroupDeleteConfirm">刪除本機群組「{value1}」？資料夾仍會保留在 Telegram。</string>
+    <string name="chatFolderGroupNameHint">群組名稱</string>
+    <string name="chatFolderGroupRemoveFolder">從本機群組移除</string>
+    <string name="chatFolderGroupRename">重新命名本機群組</string>
+    <string name="chatFolderGroupMoveUp">上移</string>
+    <string name="chatFolderGroupMoveDown">下移</string>
     <string name="chatFolderManagementAddChat">新增聊天</string>
     <string name="chatFolderManagementAddExcludedChat">新增排除的聊天</string>
     <string name="chatFolderManagementAddIncludedChat">新增包含的聊天</string>

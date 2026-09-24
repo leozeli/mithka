@@ -17,6 +17,7 @@ import 'package:mithka/auth/account_store.dart';
 import 'package:mithka/auth/auth_manager.dart';
 import 'package:mithka/chat/chat_view.dart';
 import 'package:mithka/chats/archived_chats_view.dart';
+import 'package:mithka/chats/chat_list_folder_directory.dart';
 import 'package:mithka/chats/chat_list_view.dart';
 import 'package:mithka/chats/search_view.dart';
 import 'package:mithka/components/drawer_controller.dart' as dc;
@@ -34,7 +35,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('folder slides never reset to All or toggle the Messages tab', (
+  testWidgets('selecting list folders stays on the Messages tab', (
     tester,
   ) async {
     debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
@@ -62,31 +63,30 @@ void main() {
           .widget<ChatListView>(find.byType(ChatListView))
           .controller!;
       final toggles = controller.toggleFirstUnreadRequests;
-      await tester.tap(find.byKey(const ValueKey('side-folder-1')));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        1,
-      );
-      await tester.tap(find.byKey(const ValueKey('side-folder-2')));
+      expect(find.byType(ChatFolderRail), findsNothing);
+      expect(controller.sideFolders.value, isNull);
+      final all = find.byKey(const ValueKey('chat-list-folder-all'));
+      final work = find.byKey(const ValueKey('chat-list-folder-1'));
+      expect(tester.widget<ChatListFolderHeader>(all).selected, isTrue);
+      expect(tester.widget<ChatListFolderHeader>(work).selected, isFalse);
+      await tester.tap(work);
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('chat-list-folder-2')));
       for (var frame = 0; frame < 24; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
+        expect(find.byType(ChatFolderRail), findsNothing);
         expect(
           tester
-              .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-              .selectedFolderId,
-          isNotNull,
+              .widget<ChatListFolderHeader>(
+                find.byKey(const ValueKey('chat-list-folder-2')),
+              )
+              .selected,
+          isTrue,
         );
       }
       expect(controller.toggleFirstUnreadRequests, toggles);
-      expect(
-        tester
-            .widget<ChatFolderRail>(find.byType(ChatFolderRail))
-            .selectedFolderId,
-        2,
-      );
+      expect(tester.widget<ChatListFolderHeader>(all).selected, isFalse);
+      expect(tester.widget<ChatListFolderHeader>(work).selected, isFalse);
       await _disposeShell(tester);
     } finally {
       debugDefaultTargetPlatformOverride = null;
@@ -428,6 +428,105 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets(
+    'desktop folder rail keeps the conversation width of the old split',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+      try {
+        const size = Size(1280, 800);
+        await _setSurfaceSize(tester, size);
+        await _pumpMainShell(tester, reducedMotion: true);
+        TdClient.shared.emitLocalUpdate({
+          '@type': 'updateChatFolders',
+          'chat_folders': [
+            {
+              'id': 1,
+              'title': 'Work',
+              'icon': {'name': 'Work'},
+            },
+            {
+              'id': 2,
+              'title': 'Home',
+              'icon': {'name': 'Home'},
+            },
+          ],
+        });
+        await tester.pump();
+        await tester.pump();
+
+        final requested = defaultSplitSidebarWidth(
+          size.width - desktopNavigationRailWidth,
+        );
+        final baseline = resolveDesktopShellGeometry(
+          totalWidth: size.width,
+          requestedSidebarWidth: requested,
+        );
+        final fitted = resolveDesktopShellGeometry(
+          totalWidth: size.width,
+          requestedSidebarWidth: requested,
+          folderChromeWidth: chatListFolderColumnWidth,
+        );
+        expect(
+          find.byKey(const ValueKey('chat-list-folder-column')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('chat-list-group-column')),
+          findsNothing,
+        );
+        final listWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-list-pane')))
+            .width;
+        final conversationWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-conversation-pane')))
+            .width;
+        final railWidth = tester
+            .getSize(find.byKey(const ValueKey('desktop-navigation-rail')))
+            .width;
+        expect(listWidth, closeTo(fitted.listPaneWidth, 0.5));
+        expect(conversationWidth, closeTo(fitted.conversationWidth, 0.5));
+        // The folder rail is taken from the chat column first, so the
+        // conversation gives up less than the rail's own width.
+        expect(
+          baseline.conversationWidth - conversationWidth,
+          lessThan(chatListFolderColumnWidth),
+        );
+        expect(
+          conversationWidth,
+          greaterThan(desktopConversationMinWidth + 200),
+        );
+        expect(
+          railWidth + listWidth + conversationWidth,
+          closeTo(size.width, 0.5),
+        );
+        expect(tester.takeException(), isNull);
+
+        ChatDeepLinkController.shared.openChat(chatId: 41, title: 'Open chat');
+        await tester.pump();
+        await tester.pump();
+        _discardMissingTdlibErrors(tester);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('desktop-conversation-pane')),
+            matching: find.byType(ChatView),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Open chat'), findsWidgets);
+        expect(
+          tester
+              .getSize(find.byKey(const ValueKey('desktop-conversation-pane')))
+              .width,
+          closeTo(fitted.conversationWidth, 0.5),
+        );
+        expect(tester.takeException(), isNull);
+        await _disposeShell(tester);
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    },
+  );
 
   testWidgets('narrow macOS keeps the rail and collapses the list column', (
     tester,

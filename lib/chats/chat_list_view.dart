@@ -23,7 +23,6 @@ import '../app/app_navigator.dart';
 import '../app/bottom_bar_layout.dart';
 import '../app/desktop_chat_list_title_bar_anchors.dart';
 import '../app/desktop_chat_window.dart';
-import '../app/horizontal_safe_viewport.dart';
 import '../app/ipad_window_chrome.dart';
 import '../auth/account_store.dart';
 import '../auth/auth_manager.dart';
@@ -33,6 +32,7 @@ import '../chat/custom_emoji.dart';
 import '../chat/link_handler.dart';
 import '../communities/community_models.dart';
 import '../communities/community_view.dart';
+import '../components/app_confirm_dialog.dart';
 import '../components/app_icons.dart';
 import '../components/app_interactive_surface.dart';
 import '../components/app_press_ripple.dart';
@@ -60,23 +60,39 @@ import 'archived_chats_view.dart';
 import 'chat_delete_dialog.dart';
 import 'chat_delete_policy.dart';
 import 'chat_folder_tag_controller.dart';
+import 'chat_list_folder_directory.dart';
 import 'chat_list_preview.dart';
 import 'chat_list_view_model.dart';
 import 'chat_removal_actions.dart';
 import 'chat_row_view.dart';
 import 'filtered_chats_view.dart';
+import 'local_folder_group.dart';
+import 'local_folder_group_store.dart';
 import 'qr_scanner_view.dart';
 import 'search_view.dart';
 
 class ChatListController extends ChangeNotifier {
   final sideFolders = ValueNotifier<Widget?>(null);
+  final folderChrome = ValueNotifier<double>(0);
   Object? _sideFoldersOwner;
+  Object? _folderChromeOwner;
   bool _disposed = false;
 
   void publishSideFolders(Object owner, Widget? child) {
     if (_disposed) return;
     _sideFoldersOwner = owner;
     sideFolders.value = child;
+  }
+
+  /// Asks the desktop shell to widen the list pane by [width] so the group
+  /// and folder columns can sit beside the chats. Zero clears the request.
+  void publishFolderChrome(Object owner, double width) {
+    if (_disposed) return;
+    if (identical(_folderChromeOwner, owner) && folderChrome.value == width) {
+      return;
+    }
+    _folderChromeOwner = owner;
+    folderChrome.value = width;
   }
 
   void clearSideFolders(Object owner) {
@@ -91,6 +107,7 @@ class ChatListController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     sideFolders.dispose();
+    folderChrome.dispose();
     super.dispose();
   }
 
@@ -932,20 +949,6 @@ Set<ui.PointerDeviceKind> chatFolderTabDragDevices(
   Set<ui.PointerDeviceKind> inherited,
 ) => {...inherited, ui.PointerDeviceKind.mouse};
 
-extension on Widget {
-  Widget _withChatFolderMouseDrag(BuildContext context) {
-    final inheritedScrollBehavior = ScrollConfiguration.of(context);
-    return ScrollConfiguration(
-      behavior: inheritedScrollBehavior.copyWith(
-        dragDevices: chatFolderTabDragDevices(
-          inheritedScrollBehavior.dragDevices,
-        ),
-      ),
-      child: this,
-    );
-  }
-}
-
 class CommunityListSelection {
   const CommunityListSelection({
     required this.community,
@@ -1048,11 +1051,31 @@ class _ChatListViewState extends State<ChatListView>
   bool _reactivationSyncScheduled = false;
   int _lastVisibleRows = 1;
   final ChatListSwipeSession _chatListSwipeSession = ChatListSwipeSession();
-  final ScrollController _folderTabScrollController = ScrollController();
   final ValueNotifier<bool> _showScrollToTop = ValueNotifier(false);
-  final Map<int?, GlobalKey> _folderTabKeys = {};
-  final Map<int?, GlobalKey> _sideFolderKeys = {};
-  bool _foldersInSideRail = false;
+
+  /// Local-group expansion is persisted on [_folderGroups]. Folder rows select
+  /// a filter instead of expanding, so they have no separate open set.
+  final LocalFolderGroupStore _folderGroups = LocalFolderGroupStore();
+  final Map<String, GlobalKey> _sectionHeaderKeys = {};
+  final ValueNotifier<String?> _sectionDropHighlight = ValueNotifier<String?>(
+    null,
+  );
+  int _folderGroupBindGeneration = 0;
+  List<ChatFilterOption>? _lastPrunedFilters;
+
+  /// Tabs mode draws Telegram folders inside the message list, so the outer
+  /// rail and tab strip stay unpublished.
+  bool _foldersInMessageList = false;
+  bool _threeColumnChrome = false;
+
+  /// Null shows folders that are not in a local group. A group id shows only
+  /// that group's folders.
+  String? _folderScopeGroupId;
+  List<ChatListDirectorySlot>? _directorySlots;
+  double _directoryLeadingExtent = 0;
+  double _directoryRowHeight = 0;
+  double _directoryHeaderHeight = 0;
+  bool _directoryPullDownVisible = false;
   int _nextComposerFocusRequestId = 0;
   OverlayEntry? _desktopChatMenuEntry;
   OverlayEntry? _desktopPlusMenuEntry;
@@ -1078,6 +1101,8 @@ class _ChatListViewState extends State<ChatListView>
     _model.prepareLocalPinAccount(context.read<AccountStore?>()?.activeUserId);
     _model.onAppear();
     _model.addListener(_onModel);
+    _folderGroups.addListener(_onFolderGroupsChanged);
+    unawaited(_bindFolderGroups(context.read<AccountStore?>()?.activeUserId));
     widget.controller?.addListener(_onControllerRequest);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _onControllerRequest();
@@ -1094,6 +1119,7 @@ class _ChatListViewState extends State<ChatListView>
     _activeSlotSub = TdClient.shared.subscribeActiveSlotChanges().listen((_) {
       _setConnectionStatus(ChatListConnectionStatus.connecting);
       unawaited(_refreshConnectionStatus());
+      unawaited(_loadMe());
     });
     unawaited(_refreshConnectionStatus());
   }
@@ -1137,6 +1163,7 @@ class _ChatListViewState extends State<ChatListView>
       _model.clearNotice();
       showToast(context, text);
     }
+    unawaited(_pruneFolderGroupsIfNeeded());
     setState(() {});
     if (_pendingScrollToFirstUnreadRequest != null) {
       _tryScrollToFirstUnread();
@@ -1180,7 +1207,38 @@ class _ChatListViewState extends State<ChatListView>
     if (position.extentAfter < rowHeight * 8) {
       _model.loadMore();
     }
+    _prefetchExpandedFoldersNearViewport();
     _syncScrollToTopVisibility(position);
+  }
+
+  /// Pages the selected folder when its last loaded row is near the viewport.
+  /// The list-end [loadMore] covers that same active list; this catches a
+  /// short folder whose last row sits above the end of the scroll view.
+  void _prefetchExpandedFoldersNearViewport() {
+    if (!_foldersInMessageList) return;
+    final slots = _directorySlots;
+    if (slots == null || !_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (!position.hasContentDimensions) return;
+    final viewportBottom =
+        position.pixels + position.viewportDimension + _directoryRowHeight * 2;
+    var offset = _directoryLeadingExtent;
+    for (final slot in slots) {
+      final extent = chatListDirectorySlotExtent(
+        slot.kind,
+        rowHeight: _directoryRowHeight,
+        headerHeight: _directoryHeaderHeight,
+        pullDownVisible: _directoryPullDownVisible,
+      );
+      final bottom = offset + extent;
+      if (slot.lastInSection &&
+          bottom >= position.pixels &&
+          offset <= viewportBottom) {
+        _model.prefetchFolder(slot.folderId);
+      }
+      offset = bottom;
+      if (offset > viewportBottom) break;
+    }
   }
 
   void _syncScrollToTopVisibility(ScrollPosition position) {
@@ -1196,6 +1254,9 @@ class _ChatListViewState extends State<ChatListView>
   @override
   void dispose() {
     widget.controller?.clearSideFolders(this);
+    _folderGroups.removeListener(_onFolderGroupsChanged);
+    _folderGroups.dispose();
+    _sectionDropHighlight.dispose();
     _dismissDesktopChatMenu();
     _dismissDesktopPlusMenu();
     _userSub?.cancel();
@@ -1207,7 +1268,6 @@ class _ChatListViewState extends State<ChatListView>
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _showScrollToTop.dispose();
-    _folderTabScrollController.dispose();
     _model.removeListener(_onModel);
     _model.dispose();
     super.dispose();
@@ -1228,8 +1288,40 @@ class _ChatListViewState extends State<ChatListView>
           _meId = me.int64('id');
           _model.meId = _meId;
         });
+        unawaited(_bindFolderGroups(_meId));
       }
     } catch (_) {}
+  }
+
+  void _onFolderGroupsChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _bindFolderGroups(int? userId) async {
+    final generation = ++_folderGroupBindGeneration;
+    final changed = await _folderGroups.bind(
+      slot: TdClient.shared.activeSlot,
+      userId: userId ?? _meId,
+    );
+    if (!mounted || generation != _folderGroupBindGeneration) return;
+    if (changed) {
+      _lastPrunedFilters = null;
+      unawaited(_pruneFolderGroupsIfNeeded());
+      setState(() {});
+    }
+  }
+
+  Future<void> _pruneFolderGroupsIfNeeded() async {
+    if (!_model.chatFoldersLoaded) return;
+    final filters = _model.filters;
+    if (identical(filters, _lastPrunedFilters)) return;
+    _lastPrunedFilters = filters;
+    final existing = <int>{
+      for (final filter in filters)
+        if (filter.folderId != null) filter.folderId!,
+    };
+    await _folderGroups.pruneMissing(existing);
   }
 
   void _applyConnectionUpdate(Map<String, dynamic> update) {
@@ -1613,7 +1705,7 @@ class _ChatListViewState extends State<ChatListView>
         _folderDragActive ||
         AppMotion.isReduced(context)) {
       _folderDrag.value = 0;
-      _commitFolderSwitch(filter, direction: direction);
+      _commitFolderSwitch(filter);
       return;
     }
     // A tab tap gets the same slide a drag does, so both ways of changing
@@ -1624,7 +1716,6 @@ class _ChatListViewState extends State<ChatListView>
     });
     _model.prefetchFolder(filter.folderId);
     _folderSettleTarget = filter;
-    _ensureFolderTabVisible(filter.folderId, direction);
     _startFolderSettle(to: -direction * _folderPagerWidth, velocity: 0);
   }
 
@@ -1638,10 +1729,7 @@ class _ChatListViewState extends State<ChatListView>
     return to > from ? 1 : -1;
   }
 
-  void _commitFolderSwitch(
-    ChatFilterOption filter, {
-    required double direction,
-  }) {
+  void _commitFolderSwitch(ChatFilterOption filter) {
     if (_scrollController.hasClients) _scrollController.jumpTo(0);
     setState(() {
       _folderPeek = null;
@@ -1650,7 +1738,6 @@ class _ChatListViewState extends State<ChatListView>
       _refreshPullDistance = 0;
     });
     _model.selectFilter(filter);
-    _ensureFolderTabVisible(filter.folderId, direction);
   }
 
   void _startFolderSettle({required double to, required double velocity}) {
@@ -1690,68 +1777,15 @@ class _ChatListViewState extends State<ChatListView>
   void _finishFolderSettle() {
     if (!mounted) return;
     final target = _folderSettleTarget;
-    final direction = _folderPeekSide;
     _folderSettleTarget = null;
     // Dropping the travel and swapping the folder in the same frame hands the
     // peek's position straight to the real list, so nothing jumps on landing.
     _folderDrag.value = 0;
     if (target == null) {
       setState(() => _folderPeek = null);
-      _ensureFolderTabVisible(_model.selectedFilter.folderId, -direction);
       return;
     }
-    _commitFolderSwitch(target, direction: direction);
-  }
-
-  void _ensureFolderTabVisible(int? folderId, double direction) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final key = (_foldersInSideRail
-          ? _sideFolderKeys
-          : _folderTabKeys)[folderId];
-      final ctx = key?.currentContext;
-      if (ctx == null) return;
-      final renderBox = ctx.findRenderObject() as RenderBox?;
-      if (renderBox == null) return;
-
-      // Scrollable.of asserts rather than returning null, so the row is either
-      // inside a scrollable or this is a programming error worth surfacing.
-      final scrollableState = Scrollable.of(ctx);
-      final viewportBox =
-          scrollableState.context.findRenderObject() as RenderBox?;
-      if (viewportBox == null) return;
-
-      final tabPos = renderBox.localToGlobal(Offset.zero);
-      final viewPos = viewportBox.localToGlobal(Offset.zero);
-      final vertical =
-          axisDirectionToAxis(scrollableState.axisDirection) == Axis.vertical;
-      final tabLeft = vertical ? tabPos.dy : tabPos.dx;
-      final tabRight =
-          tabLeft + (vertical ? renderBox.size.height : renderBox.size.width);
-      final viewLeft = vertical ? viewPos.dy : viewPos.dx;
-      final viewRight =
-          viewLeft +
-          (vertical ? viewportBox.size.height : viewportBox.size.width);
-
-      double? alignment;
-      if (direction > 0 && tabRight > viewRight) {
-        alignment = 1.0;
-      } else if (direction < 0 && tabLeft < viewLeft) {
-        alignment = 0.0;
-      } else {
-        return;
-      }
-
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: alignment,
-        duration: AppMotion.duration(
-          context,
-          const Duration(milliseconds: 250),
-        ),
-        curve: Curves.easeOutCubic,
-      );
-    });
+    _commitFolderSwitch(target);
   }
 
   void _onControllerRequest() {
@@ -1875,6 +1909,27 @@ class _ChatListViewState extends State<ChatListView>
     );
     if (entryIndex < 0) return null;
 
+    if (_foldersInMessageList && !_threeColumnChrome) {
+      final slots = _directorySlots;
+      if (slots == null) return null;
+      final target = slots.indexWhere(
+        (slot) =>
+            slot.kind == ChatListDirectorySlotKind.entry &&
+            slot.folderId == null &&
+            slot.entryIndex == entryIndex,
+      );
+      if (target < 0) return null;
+      return chatListDirectoryScrollOffset(
+        slots: slots,
+        targetIndex: target,
+        rowHeight: chatListRowExtentFor(context, listen: false),
+        headerHeight: _directoryHeaderHeight,
+        maxScrollExtent: _scrollController.position.maxScrollExtent,
+        pullDownVisible: _directoryPullDownVisible,
+        leadingExtent: _directoryLeadingExtent,
+      );
+    }
+
     var itemIndex = entryIndex;
     if (_model.isAllFilter && _model.filtered.isNotEmpty) itemIndex++;
     final archiveMode = effectiveChatListArchiveDisplayMode(
@@ -1935,33 +1990,24 @@ class _ChatListViewState extends State<ChatListView>
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final folderMode = theme.chatFolderDisplayMode;
-    final isBot = context.watch<AccountStore?>()?.activeIsBotApi ?? false;
-    final tabCount = isBot
-        ? 1
-        : 1 +
-              (theme.showChannelsTab ? 1 : 0) +
-              (theme.showContactsTab ? 1 : 0) +
-              (theme.showMomentsTab ? 1 : 0);
-    final sideFolders =
-        widget.controller != null &&
-        !kIsWeb &&
-        (widget.desktopSidebar ||
-            (defaultTargetPlatform == TargetPlatform.iOS &&
-                SideNavigationGeometry.of(
-                      context,
-                    )?.fits(tabCount, SideNavigationGeometry.itemExtent) ==
-                    true));
-    _foldersInSideRail = sideFolders;
-    final folderRail =
-        sideFolders &&
-            folderMode == ChatFolderDisplayMode.tabs &&
-            _model.filters.length > 1
-        ? _chatFolderRail()
-        : null;
+    _foldersInMessageList =
+        folderMode == ChatFolderDisplayMode.tabs && _model.filters.length > 1;
     final controller = widget.controller;
+    // The message list owns folder browsing in Tabs mode. Clear any rail the
+    // navigation column is still holding.
+    final showGroupColumn =
+        widget.desktopSidebar &&
+        _foldersInMessageList &&
+        _folderGroups.groups.isNotEmpty;
+    final folderChrome = !widget.desktopSidebar || !_foldersInMessageList
+        ? 0.0
+        : showGroupColumn
+        ? chatListFolderChromeWidth
+        : chatListFolderColumnWidth;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(widget.controller, controller)) {
-        controller?.publishSideFolders(this, folderRail);
+        controller?.publishSideFolders(this, null);
+        controller?.publishFolderChrome(this, folderChrome);
       }
     });
     if (folderMode == ChatFolderDisplayMode.hidden && !_model.isAllFilter) {
@@ -1971,47 +2017,196 @@ class _ChatListViewState extends State<ChatListView>
         }
       });
     }
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          color: c.background,
-          child: Column(
-            children: [
-              if (!widget.desktopSidebar) _header(),
-              if (!sideFolders &&
-                  folderMode == ChatFolderDisplayMode.tabs &&
-                  _model.filters.length > 1)
-                _chatFolderTabs(),
-              Expanded(
-                child: Listener(
-                  behavior: HitTestBehavior.translucent,
-                  onPointerDown: _handleGesturePointerDown,
-                  onPointerMove: _handleGesturePointerMove,
-                  onPointerUp: _handleGesturePointerUp,
-                  onPointerCancel: _handleGesturePointerCancel,
-                  child: _folderPager(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _threeColumnChrome =
+            folderChrome > 0 &&
+            constraints.maxWidth >= folderChrome + chatListColumnMinWidth;
+        final scopeId = _resolvedFolderScopeId();
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Container(
+              color: c.background,
+              child: Row(
+                children: [
+                  if (_threeColumnChrome) ...[
+                    if (_folderGroups.groups.isNotEmpty)
+                      _localGroupColumn(scopeId),
+                    _folderRailColumn(scopeId),
+                  ],
+                  Expanded(
+                    child: Column(
+                      children: [
+                        if (!widget.desktopSidebar) _header(),
+                        Expanded(
+                          child: Listener(
+                            behavior: HitTestBehavior.translucent,
+                            onPointerDown: _handleGesturePointerDown,
+                            onPointerMove: _handleGesturePointerMove,
+                            onPointerUp: _handleGesturePointerUp,
+                            onPointerCancel: _handleGesturePointerCancel,
+                            child: _folderPager(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              right: 16,
+              bottom: 12 + BottomBarInset.of(context),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _showScrollToTop,
+                builder: (context, show, _) {
+                  if (!show) return const SizedBox.shrink();
+                  return ChatListScrollToTopButton(onTap: _scrollListToTop);
+                },
+              ),
+            ),
+            _plusMenuOverlay(visible: _showPlusMenu),
+            _filterMenuOverlay(
+              visible:
+                  folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String? _resolvedFolderScopeId() {
+    final id = _folderScopeGroupId;
+    if (id == null) return null;
+    return _folderGroups.groupFor(id) == null ? null : id;
+  }
+
+  void _selectFolderScope(String? groupId) {
+    if (_folderScopeGroupId == groupId) return;
+    setState(() => _folderScopeGroupId = groupId);
+  }
+
+  List<ChatFilterOption> _scopedFilters(String? scopeId) {
+    final byId = <int, ChatFilterOption>{
+      for (final filter in _model.filters)
+        if (filter.folderId != null) filter.folderId!: filter,
+    };
+    final telegramIds = [
+      for (final filter in _model.filters)
+        if (filter.folderId != null) filter.folderId!,
+    ];
+    final ids = scopeId == null
+        ? _folderGroups.ungroupedDisplayOrder(telegramIds)
+        : [
+            for (final id
+                in _folderGroups.groupFor(scopeId)?.childFolderIds ??
+                    const <int>[])
+              if (byId.containsKey(id)) id,
+          ];
+    return [for (final id in ids) byId[id]!];
+  }
+
+  Widget _localGroupColumn(String? scopeId) {
+    final c = context.colors;
+    final groups = _folderGroups.groups;
+    return Container(
+      key: const ValueKey('chat-list-group-column'),
+      width: chatListGroupColumnWidth,
+      decoration: BoxDecoration(
+        color: c.groupedBackground,
+        border: BorderDirectional(
+          end: BorderSide(color: c.divider, width: AppMetric.divider),
+        ),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+              children: [
+                for (var index = 0; index < groups.length; index++)
+                  _directoryHeader(
+                    key: ValueKey('chat-list-group-${groups[index].id}'),
+                    title: groups[index].title,
+                    iconName: groups[index].iconName,
+                    selected: scopeId == groups[index].id,
+                    dragToken: 'g:${groups[index].id}',
+                    actions: _localGroupActions(groups[index]),
+                    onTap: () => _selectFolderScope(
+                      scopeId == groups[index].id ? null : groups[index].id,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          AppInteractiveSurface(
+            key: const ValueKey('chat-list-group-create'),
+            onTap: () => unawaited(_createLocalFolderGroup()),
+            semanticLabel: AppStrings.t(AppStringKeys.chatFolderGroupCreate),
+            child: SizedBox(
+              height: 36,
+              child: Center(
+                child: AppIcon(
+                  HeroAppIcons.plus,
+                  size: AppIconSize.sm,
+                  color: c.textTertiary,
                 ),
               ),
-            ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _folderRailColumn(String? scopeId) {
+    final c = context.colors;
+    final filters = _scopedFilters(scopeId);
+    return Container(
+      key: const ValueKey('chat-list-folder-column'),
+      width: chatListFolderColumnWidth,
+      decoration: BoxDecoration(
+        color: c.background,
+        border: BorderDirectional(
+          end: BorderSide(color: c.divider, width: AppMetric.divider),
         ),
-        Positioned(
-          right: 16,
-          bottom: 12 + BottomBarInset.of(context),
-          child: ValueListenableBuilder<bool>(
-            valueListenable: _showScrollToTop,
-            builder: (context, show, _) {
-              if (!show) return const SizedBox.shrink();
-              return ChatListScrollToTopButton(onTap: _scrollListToTop);
-            },
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+        children: [
+          _directoryHeader(
+            key: const ValueKey('chat-list-folder-all'),
+            title: _model.filters
+                .firstWhere(
+                  (item) => item.isAll,
+                  orElse: () => _model.filters.first,
+                )
+                .title
+                .l10n(context),
+            iconName: 'All',
+            selected: _model.isAllFilter,
+            actions: _allSectionActions(),
+            onTap: () => _selectDirectoryFilter(
+              _model.filters.firstWhere(
+                (item) => item.isAll,
+                orElse: () => _model.filters.first,
+              ),
+            ),
           ),
-        ),
-        _plusMenuOverlay(visible: _showPlusMenu),
-        _filterMenuOverlay(
-          visible: folderMode == ChatFolderDisplayMode.menu && _showFilterMenu,
-        ),
-      ],
+          for (final filter in filters)
+            _directoryHeader(
+              key: ValueKey('chat-list-folder-${filter.folderId}'),
+              title: filter.title.l10n(context),
+              iconName: filter.iconName,
+              selected: _model.selectedFilter.folderId == filter.folderId,
+              dragToken: 'f:${filter.folderId}',
+              actions: _folderSectionActions(filter),
+              onTap: () => _selectDirectoryFilter(filter),
+            ),
+        ],
+      ),
     );
   }
 
@@ -2060,6 +2255,7 @@ class _ChatListViewState extends State<ChatListView>
     }
     if (travel == null ||
         _folderPagerWidth <= 0 ||
+        _foldersInMessageList ||
         _model.filters.length < 2 ||
         folderMode == ChatFolderDisplayMode.hidden ||
         _chatListSwipeSession.liveDecision(mode).action !=
@@ -2091,7 +2287,6 @@ class _ChatListViewState extends State<ChatListView>
       });
       if (neighbour != null) {
         _model.prefetchFolder(neighbour.folderId);
-        _ensureFolderTabVisible(neighbour.folderId, _folderPeekSide);
       }
     }
     _folderDrag.value = chatListFolderDragOffset(
@@ -2355,130 +2550,25 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
-  /// How lit a tab is right now: the selected one hands its highlight over to
-  /// the folder being swiped in as the list travels, so the strip moves with
-  /// the drag instead of flipping once it lands.
-  double _folderTabHighlight({required bool selected, required bool peeked}) {
-    final width = _folderPagerWidth;
-    if (width <= 0 || _folderPeek == null) return selected ? 1 : 0;
-    final progress = (_folderDrag.value.abs() / width).clamp(0.0, 1.0);
-    if (selected) return 1 - progress;
-    return peeked ? progress : 0;
-  }
-
-  Widget _chatFolderRail() => AnimatedBuilder(
-    animation: _folderDrag,
-    builder: (context, _) => ChatFolderRail(
-      filters: _model.filters,
-      selectedFolderId: _model.selectedFilter.folderId,
-      highlights: {
-        for (final filter in _model.filters)
-          filter.folderId: _folderTabHighlight(
-            selected: filter.folderId == _model.selectedFilter.folderId,
-            peeked: filter.folderId == _folderPeek?.folderId,
-          ),
-      },
-      onSelect: _selectFilter,
-      onEdit: _editFolderAppearance,
-      keyForFolder: (id) => _sideFolderKeys.putIfAbsent(id, GlobalKey.new),
-    ),
-  );
-
-  Widget _chatFolderTabs() {
-    final c = context.colors;
-    final selectedFolderId = _model.selectedFilter.folderId;
-    // The strip scrolls horizontally, so its height is fixed; grow it with the
-    // label that sits above the selection indicator.
-    final tabHeight = AppMetric.rowExtentFor(
-      context,
-      base: 44,
-      lines: const [AppTextSize.callout],
-    );
-    return Container(
-      height: tabHeight,
-      decoration: BoxDecoration(
-        color: c.listHeaderTint,
-        border: Border(bottom: BorderSide(color: c.divider, width: 0.5)),
-      ),
-      child: ListView.separated(
-        controller: _folderTabScrollController,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-        itemCount: _model.filters.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 28),
-        itemBuilder: (context, index) {
-          final filter = _model.filters[index];
-          final selected = filter.folderId == selectedFolderId;
-          final peeked = filter.folderId == _folderPeek?.folderId;
-          final key = _folderTabKeys.putIfAbsent(
-            filter.folderId,
-            GlobalKey.new,
-          );
-          return GestureDetector(
-            key: key,
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _selectFilter(filter),
-            child: SizedBox(
-              height: tabHeight,
-              child: AnimatedBuilder(
-                animation: _folderDrag,
-                builder: (context, _) {
-                  final highlight = _folderTabHighlight(
-                    selected: selected,
-                    peeked: peeked,
-                  );
-                  final accent = Color.lerp(
-                    c.textSecondary,
-                    AppTheme.brand,
-                    highlight,
-                  );
-                  return Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ChatFolderIcon(
-                            filter.isAll ? 'All' : filter.iconName,
-                            size: 17,
-                            color: accent ?? c.textSecondary,
-                          ),
-                          const SizedBox(width: AppSpacing.xs + 1),
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 168),
-                            child: Text(
-                              filter.title.l10n(context),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: AppTextSize.callout,
-                                fontWeight: selected
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                color: c.textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 7),
-                      Container(
-                        width: 38,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppTheme.brand.withValues(alpha: highlight),
-                          borderRadius: BorderRadius.circular(AppRadius.sm),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
-          );
-        },
-      )._withChatFolderMouseDrag(context),
-    );
+  /// Selects a folder or All inside the message list without paging the rail.
+  ///
+  /// The directory rows stay put. [ChatListViewModel.selectFilter] replaces
+  /// the chats under them, which is the old side-rail switch.
+  void _selectDirectoryFilter(ChatFilterOption filter) {
+    if (filter.folderId == _model.selectedFilter.folderId) return;
+    final folderId = filter.folderId;
+    if (folderId != null) {
+      _model.prefetchFolder(folderId);
+      unawaited(_folderGroups.expandGroupContaining(folderId));
+    }
+    if (_scrollController.hasClients) _scrollController.jumpTo(0);
+    setState(() {
+      _folderPeek = null;
+      _openSwipeChat = null;
+      _archiveRevealed = false;
+      _refreshPullDistance = 0;
+    });
+    _model.selectFilter(filter);
   }
 
   // MARK: - Search
@@ -2698,7 +2788,525 @@ class _ChatListViewState extends State<ChatListView>
     );
   }
 
+  Widget _folderDirectoryList() {
+    final colors = context.colors;
+    final theme = context.watch<ThemeController>();
+    final leadingControlsExtent = _leadingListControlsExtent(theme);
+    final showLeadingControls = leadingControlsExtent > 0;
+    final archiveMode = effectiveChatListArchiveDisplayMode(
+      theme.archivedChatsDisplayMode,
+    );
+    final communitiesEnabled = theme.communitiesEnabled;
+    return Container(
+      color: colors.background,
+      child: LayoutBuilder(
+        builder: (context, geo) {
+          final rowHeight = chatListRowExtentFor(context);
+          final headerHeight = chatListFolderHeaderExtent();
+          final visibleRows = math.max(
+            1,
+            (geo.maxHeight / (rowHeight + 0.5)).ceil(),
+          );
+          _lastVisibleRows = visibleRows;
+          final selectedEntries = _model.chatListEntries(
+            communitiesEnabled: communitiesEnabled,
+          );
+          final selectedFolderId = _model.selectedFilter.folderId;
+          final showingAll = selectedFolderId == null;
+          final folderFilters = [
+            for (final filter in _model.filters)
+              if (!filter.isAll && filter.folderId != null) filter,
+          ];
+          final hasArchive = showingAll && _model.archived.isNotEmpty;
+          final showPulledDownArchive =
+              hasArchive &&
+              archiveMode == ArchivedChatsDisplayMode.pullDown &&
+              _archiveRevealed;
+          final hasPullDownArchiveSlot =
+              hasArchive && archiveMode == ArchivedChatsDisplayMode.pullDown;
+          final showInlineArchive = hasArchive && archiveMode.isInline;
+          final inlineArchiveIndex = archiveMode.insertionIndex(
+            chatCount: selectedEntries.length,
+            visibleRows: visibleRows,
+          );
+          final slots = buildChatListFolderDirectory(
+            folderIds: _folderGroups.directoryFolderIds([
+              for (final filter in folderFilters) filter.folderId!,
+            ]),
+            selectedFolderId: selectedFolderId,
+            selectedEntryCount: selectedEntries.length,
+            selectedLoading:
+                selectedEntries.isEmpty &&
+                !showInlineArchive &&
+                (showingAll
+                    ? _model.isInitialLoading
+                    : _model.isChatListLoading(selectedFolderId)),
+            selectedPlaceholderCount: showingAll ? visibleRows : 3,
+            hasPullDownArchiveSlot: hasPullDownArchiveSlot,
+            hasFiltered: showingAll && _model.filtered.isNotEmpty,
+            showInlineArchive: showInlineArchive,
+            inlineArchiveIndex: inlineArchiveIndex,
+            groups: _folderGroups.groups,
+          );
+          _directorySlots = slots;
+          _directoryLeadingExtent = leadingControlsExtent;
+          _directoryRowHeight = rowHeight;
+          _directoryHeaderHeight = headerHeight;
+          _directoryPullDownVisible = showPulledDownArchive;
+          final filtersById = {
+            for (final filter in folderFilters) filter.folderId!: filter,
+          };
+          return NotificationListener<ScrollNotification>(
+            onNotification: _handleChatListPull,
+            child: ListView.builder(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              padding: EdgeInsets.only(bottom: BottomBarInset.of(context)),
+              itemCount: slots.length + (showLeadingControls ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (showLeadingControls && index == 0) {
+                  return _archivePullSearchPill(hasPullDownArchiveSlot);
+                }
+                final slot = slots[showLeadingControls ? index - 1 : index];
+                return _directorySlot(
+                  slot,
+                  rowHeight: rowHeight,
+                  showPulledDownArchive: showPulledDownArchive,
+                  selectedEntries: selectedEntries,
+                  filtersById: filtersById,
+                  emptyHeight: math.max(180, geo.maxHeight * 0.45),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _directorySlot(
+    ChatListDirectorySlot slot, {
+    required double rowHeight,
+    required bool showPulledDownArchive,
+    required List<CommunityChatListEntry> selectedEntries,
+    required Map<int, ChatFilterOption> filtersById,
+    required double emptyHeight,
+  }) {
+    switch (slot.kind) {
+      case ChatListDirectorySlotKind.pullDownArchive:
+        return _pullDownArchiveSlot(
+          rowHeight: rowHeight + 0.5,
+          visible: showPulledDownArchive,
+        );
+      case ChatListDirectorySlotKind.groupHeader:
+        final group = _folderGroups.groupFor(slot.groupId ?? '');
+        if (group == null) return const SizedBox.shrink();
+        return _directoryHeader(
+          key: ValueKey('chat-list-group-${group.id}'),
+          dragToken: 'g:${group.id}',
+          title: group.title,
+          iconName: group.iconName,
+          expanded: slot.expanded,
+          showsChevron: true,
+          indent: slot.indent,
+          onTap: () => unawaited(_folderGroups.toggleExpanded(group.id)),
+          actions: _localGroupActions(group),
+        );
+      case ChatListDirectorySlotKind.folderHeader:
+        final filter = slot.folderId == null
+            ? _model.filters.firstWhere(
+                (item) => item.isAll,
+                orElse: () => _model.selectedFilter,
+              )
+            : filtersById[slot.folderId];
+        if (filter == null) return const SizedBox.shrink();
+        return _directoryHeader(
+          key: ValueKey('chat-list-folder-${slot.folderId ?? 'all'}'),
+          dragToken: slot.folderId == null ? null : 'f:${slot.folderId}',
+          title: filter.title.l10n(context),
+          iconName: filter.isAll ? 'All' : filter.iconName,
+          selected: slot.selected,
+          indent: slot.indent,
+          onTap: () => _selectDirectoryFilter(filter),
+          onSecondaryTap: filter.isAll
+              ? null
+              : () => unawaited(_editFolderAppearance(filter)),
+          actions: filter.isAll
+              ? _allSectionActions()
+              : _folderSectionActions(filter),
+        );
+      case ChatListDirectorySlotKind.filtered:
+        return _filteredChatsRow();
+      case ChatListDirectorySlotKind.archive:
+        return _assistantRow();
+      case ChatListDirectorySlotKind.empty:
+        return SizedBox(height: emptyHeight, child: _emptyChatList());
+      case ChatListDirectorySlotKind.placeholder:
+        return _directoryIndent(const _ChatRowPlaceholder(), slot.indent);
+      case ChatListDirectorySlotKind.entry:
+        final entries = selectedEntries;
+        final entryIndex = slot.entryIndex ?? 0;
+        if (entryIndex < 0 || entryIndex >= entries.length) {
+          return const SizedBox.shrink();
+        }
+        final entry = entries[entryIndex];
+        final child = switch (entry) {
+          CommunityChatEntry(:final chat) => _swipeRow(
+            chat,
+            key: ValueKey(
+              'chat-list-folder-chat-${slot.folderId ?? 'all'}-${chat.id}',
+            ),
+            chatList: slot.folderId == null
+                ? <String, dynamic>{'@type': 'chatListMain'}
+                : <String, dynamic>{
+                    '@type': 'chatListFolder',
+                    'chat_folder_id': slot.folderId,
+                  },
+            allowLocalPin: slot.folderId == null,
+          ),
+          CommunityGroupEntry() => KeyedSubtree(
+            key: ValueKey(
+              'chat-list-folder-community-${slot.folderId ?? 'all'}-${entry.community.id}',
+            ),
+            child: _communityRow(entry),
+          ),
+        };
+        return _directoryIndent(child, slot.indent);
+    }
+  }
+
+  Widget _directoryIndent(Widget child, double indent) {
+    if (indent <= 0) return child;
+    return Padding(
+      padding: EdgeInsetsDirectional.only(start: indent),
+      child: child,
+    );
+  }
+
+  Widget _directoryHeader({
+    required Key key,
+    required String title,
+    required VoidCallback onTap,
+    required List<DesktopRowAction> actions,
+    double indent = 0,
+    String iconName = 'Custom',
+    bool expanded = false,
+    bool showsChevron = false,
+    bool selected = false,
+    String? dragToken,
+    VoidCallback? onSecondaryTap,
+  }) {
+    final desktop = !kIsWeb && isDesktopTargetPlatform();
+    final token = dragToken;
+    final sections = token == null
+        ? const <({GlobalKey key, String token})>[]
+        : _reorderSections(token);
+    final header = token == null
+        ? ChatListFolderHeader(
+            key: key,
+            title: title,
+            iconName: iconName,
+            expanded: expanded,
+            showsChevron: showsChevron,
+            selected: selected,
+            onTap: onTap,
+            onSecondaryTap: desktop ? null : onSecondaryTap,
+          )
+        : ChatListSectionDrag(
+            key: _sectionHeaderKey(token),
+            enabled: sections.length > 1,
+            token: token,
+            title: title,
+            iconName: iconName,
+            expanded: expanded,
+            showsChevron: showsChevron,
+            highlight: _sectionDropHighlight,
+            resolveTarget: (global) =>
+                _sectionTargetAt(global, sections, token),
+            onDrop: (target) => _dropSection(token, target),
+            onTap: onTap,
+            builder: ({required bool dragging, required bool highlighted}) {
+              return ChatListFolderHeader(
+                key: key,
+                title: title,
+                iconName: iconName,
+                expanded: expanded,
+                showsChevron: showsChevron,
+                selected: selected,
+                draggable: sections.length > 1,
+                dragging: dragging,
+                highlighted: highlighted,
+                onTap: onTap,
+                onSecondaryTap: desktop ? null : onSecondaryTap,
+              );
+            },
+          );
+    return ChatListSelectionHighlight(
+      selected: selected,
+      child: _directoryIndent(
+        DesktopRowActionRegion(actions: actions, child: header),
+        indent,
+      ),
+    );
+  }
+
+  GlobalKey _sectionHeaderKey(String token) =>
+      _sectionHeaderKeys.putIfAbsent(token, GlobalKey.new);
+
+  List<({GlobalKey key, String token})> _reorderSections(String token) {
+    if (token.startsWith('g:')) {
+      return [
+        for (final group in _folderGroups.groups)
+          (key: _sectionHeaderKey('g:${group.id}'), token: 'g:${group.id}'),
+      ];
+    }
+    if (!token.startsWith('f:')) return const [];
+    final folderId = int.tryParse(token.substring(2));
+    if (folderId == null) return const [];
+    final group = _folderGroups.groupContaining(folderId);
+    final ids = group == null
+        ? _folderGroups.ungroupedDisplayOrder(_telegramFolderIds)
+        : group.childFolderIds;
+    return [
+      for (final id in ids) (key: _sectionHeaderKey('f:$id'), token: 'f:$id'),
+    ];
+  }
+
+  /// The peer header whose vertical band contains [global].
+  ///
+  /// Bands meet halfway between header centers, so a drop on an expanded
+  /// section still lands on that section's header. The dragged row itself is
+  /// not a target.
+  String? _sectionTargetAt(
+    Offset global,
+    List<({GlobalKey key, String token})> sections,
+    String source,
+  ) {
+    final boxes = <({String token, Rect rect})>[];
+    for (final section in sections) {
+      final box = section.key.currentContext?.findRenderObject() as RenderBox?;
+      if (box == null || !box.attached || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      boxes.add((token: section.token, rect: topLeft & box.size));
+    }
+    if (boxes.length < 2) return null;
+    boxes.sort((a, b) => a.rect.top.compareTo(b.rect.top));
+    final left = boxes.map((box) => box.rect.left).reduce(math.min) - 24;
+    final right = boxes.map((box) => box.rect.right).reduce(math.max) + 24;
+    if (global.dx < left || global.dx > right) return null;
+    for (var i = 0; i < boxes.length; i++) {
+      final above = i == 0
+          ? double.negativeInfinity
+          : (boxes[i - 1].rect.center.dy + boxes[i].rect.center.dy) / 2;
+      final below = i == boxes.length - 1
+          ? double.infinity
+          : (boxes[i].rect.center.dy + boxes[i + 1].rect.center.dy) / 2;
+      if (global.dy < above || global.dy >= below) continue;
+      final token = boxes[i].token;
+      return token == source ? null : token;
+    }
+    return null;
+  }
+
+  void _dropSection(String source, String target) {
+    if (source == target) return;
+    if (source.startsWith('g:') && target.startsWith('g:')) {
+      final index = _folderGroups.groups.indexWhere(
+        (group) => group.id == target.substring(2),
+      );
+      if (index < 0) return;
+      unawaited(_folderGroups.moveGroupTo(source.substring(2), index));
+      return;
+    }
+    if (!source.startsWith('f:') || !target.startsWith('f:')) return;
+    final folderId = int.tryParse(source.substring(2));
+    final targetId = int.tryParse(target.substring(2));
+    if (folderId == null || targetId == null) return;
+    unawaited(
+      _folderGroups.moveFolderTo(folderId, targetId, _telegramFolderIds),
+    );
+  }
+
+  List<DesktopRowAction> _allSectionActions() {
+    return [
+      DesktopRowAction(
+        id: 'create-local-folder-group',
+        label: AppStringKeys.chatFolderGroupCreate,
+        icon: HeroAppIcons.folder,
+        onInvoke: () => unawaited(_createLocalFolderGroup()),
+      ),
+    ];
+  }
+
+  List<DesktopRowAction> _folderSectionActions(ChatFilterOption filter) {
+    final actions = <DesktopRowAction>[
+      DesktopRowAction(
+        id: 'edit-folder',
+        label: AppStringKeys.chatFolderManagementEditFolder,
+        icon: HeroAppIcons.pen,
+        onInvoke: () => unawaited(_editFolderAppearance(filter)),
+      ),
+    ];
+    final folderId = filter.folderId;
+    if (folderId == null) return actions;
+    actions.addAll(_folderMoveActions(folderId));
+    final current = _folderGroups.groupContaining(folderId);
+    if (current != null) {
+      actions.add(
+        DesktopRowAction(
+          id: 'remove-from-local-folder-group',
+          label: AppStringKeys.chatFolderGroupRemoveFolder,
+          icon: HeroAppIcons.ban,
+          onInvoke: () => unawaited(_folderGroups.removeFolder(folderId)),
+        ),
+      );
+    }
+    for (final group in _folderGroups.groups) {
+      if (current?.id == group.id) continue;
+      actions.add(
+        DesktopRowAction(
+          id: 'add-to-local-folder-group-${group.id}',
+          label: AppStrings.t(AppStringKeys.chatFolderGroupAddTo, {
+            'value1': group.title,
+          }),
+          icon: HeroAppIcons.folder,
+          onInvoke: () =>
+              unawaited(_folderGroups.addFolder(group.id, folderId)),
+        ),
+      );
+    }
+    actions.add(
+      DesktopRowAction(
+        id: 'create-local-folder-group-with-folder',
+        label: AppStringKeys.chatFolderGroupCreateWithFolder,
+        icon: HeroAppIcons.plus,
+        onInvoke: () =>
+            unawaited(_createLocalFolderGroup(seedFolderIds: [folderId])),
+      ),
+    );
+    return actions;
+  }
+
+  List<DesktopRowAction> _localGroupActions(LocalFolderGroup group) {
+    return [
+      ..._moveActions(
+        idPrefix: 'local-folder-group',
+        canUp: _folderGroups.canMoveGroup(group.id, -1),
+        canDown: _folderGroups.canMoveGroup(group.id, 1),
+        onUp: () => unawaited(_folderGroups.moveGroupBy(group.id, -1)),
+        onDown: () => unawaited(_folderGroups.moveGroupBy(group.id, 1)),
+      ),
+      DesktopRowAction(
+        id: 'rename-local-folder-group',
+        label: AppStringKeys.chatFolderGroupRename,
+        icon: HeroAppIcons.pen,
+        onInvoke: () => unawaited(_renameLocalFolderGroup(group)),
+      ),
+      DesktopRowAction(
+        id: 'delete-local-folder-group',
+        label: AppStringKeys.chatFolderGroupDelete,
+        icon: HeroAppIcons.trash,
+        color: AppTheme.tagRed,
+        onInvoke: () => unawaited(_deleteLocalFolderGroup(group)),
+      ),
+    ];
+  }
+
+  List<int> get _telegramFolderIds => [
+    for (final filter in _model.filters)
+      if (!filter.isAll && filter.folderId != null) filter.folderId!,
+  ];
+
+  List<DesktopRowAction> _folderMoveActions(int folderId) {
+    final telegramIds = _telegramFolderIds;
+    return _moveActions(
+      idPrefix: 'folder',
+      canUp: _folderGroups.canMoveFolder(folderId, -1, telegramIds),
+      canDown: _folderGroups.canMoveFolder(folderId, 1, telegramIds),
+      onUp: () =>
+          unawaited(_folderGroups.moveFolderBy(folderId, -1, telegramIds)),
+      onDown: () =>
+          unawaited(_folderGroups.moveFolderBy(folderId, 1, telegramIds)),
+    );
+  }
+
+  List<DesktopRowAction> _moveActions({
+    required String idPrefix,
+    required bool canUp,
+    required bool canDown,
+    required VoidCallback onUp,
+    required VoidCallback onDown,
+  }) {
+    return [
+      if (canUp)
+        DesktopRowAction(
+          id: 'move-$idPrefix-up',
+          label: AppStringKeys.chatFolderGroupMoveUp,
+          icon: HeroAppIcons.arrowUp,
+          onInvoke: onUp,
+        ),
+      if (canDown)
+        DesktopRowAction(
+          id: 'move-$idPrefix-down',
+          label: AppStringKeys.chatFolderGroupMoveDown,
+          icon: HeroAppIcons.arrowDown,
+          onInvoke: onDown,
+        ),
+    ];
+  }
+
+  Future<void> _createLocalFolderGroup({
+    List<int> seedFolderIds = const <int>[],
+  }) async {
+    final title = await Navigator.of(context, rootNavigator: true).push<String>(
+      MaterialPageRoute(
+        builder: (_) => const EditFieldView(
+          title: AppStringKeys.chatFolderGroupCreate,
+          initial: '',
+          hint: AppStringKeys.chatFolderGroupNameHint,
+          maxLength: 24,
+        ),
+      ),
+    );
+    if (title == null || title.trim().isEmpty || !mounted) return;
+    await _folderGroups.create(title: title, childFolderIds: seedFolderIds);
+  }
+
+  Future<void> _renameLocalFolderGroup(LocalFolderGroup group) async {
+    final title = await Navigator.of(context, rootNavigator: true).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditFieldView(
+          title: AppStringKeys.chatFolderGroupRename,
+          initial: group.title,
+          hint: AppStringKeys.chatFolderGroupNameHint,
+          maxLength: 24,
+        ),
+      ),
+    );
+    if (title == null || title.trim().isEmpty || !mounted) return;
+    await _folderGroups.rename(group.id, title);
+  }
+
+  Future<void> _deleteLocalFolderGroup(LocalFolderGroup group) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: AppStrings.t(AppStringKeys.chatFolderGroupDeleteConfirm, {
+        'value1': group.title,
+      }),
+      confirmText: AppStringKeys.chatFolderGroupDelete,
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    await _folderGroups.delete(group.id);
+  }
+
   Widget _chatList() {
+    if (_foldersInMessageList && !_threeColumnChrome) {
+      return _folderDirectoryList();
+    }
+    _directorySlots = null;
     final c = context.colors;
     final theme = context.watch<ThemeController>();
     final leadingControlsExtent = _leadingListControlsExtent(theme);
@@ -2918,6 +3526,7 @@ class _ChatListViewState extends State<ChatListView>
 
   void _switchFolderBySwipe(double? velocity) {
     if (velocity == null || velocity.abs() < 240) return;
+    if (_foldersInMessageList) return;
     if (context.read<ThemeController>().chatFolderDisplayMode ==
         ChatFolderDisplayMode.hidden) {
       return;
@@ -2953,13 +3562,15 @@ class _ChatListViewState extends State<ChatListView>
   List<SwipeActionItem> _rowSwipeActions(
     ChatSummary chat, {
     required bool locallyPinned,
+    Map<String, dynamic>? chatList,
+    bool? allowLocalPin,
   }) {
     final pin = SwipeActionItem(
       title: chat.isPinned
           ? AppStringKeys.chatListUnpin
           : AppStringKeys.chatInfoPin,
       color: chat.isPinned ? const Color(0xFF8E8E93) : const Color(0xFF3C8CF0),
-      onTap: () => _model.togglePin(chat),
+      onTap: () => _model.togglePin(chat, chatList: chatList),
     );
     final unread = SwipeActionItem(
       title: AppStringKeys.chatListMarkUnread,
@@ -2971,7 +3582,7 @@ class _ChatListViewState extends State<ChatListView>
       color: const Color(0xFFFA5151),
       onTap: () => _confirmDeleteChat(chat),
     );
-    if (!_model.isAllFilter) {
+    if (!(allowLocalPin ?? _model.isAllFilter)) {
       return chat.isPinned ? [unread, pin, remove] : [pin, unread, remove];
     }
     final local = SwipeActionItem(
@@ -2986,7 +3597,12 @@ class _ChatListViewState extends State<ChatListView>
         : [local, pin, unread, remove];
   }
 
-  Widget _swipeRow(ChatSummary chat) {
+  Widget _swipeRow(
+    ChatSummary chat, {
+    Key? key,
+    Map<String, dynamic>? chatList,
+    bool? allowLocalPin,
+  }) {
     final selected = widget.selectedChatId == chat.id;
     final swipeMode = context.watch<ThemeController>().chatListSwipeMode;
     final platform = Theme.of(context).platform;
@@ -2999,17 +3615,34 @@ class _ChatListViewState extends State<ChatListView>
       mode: swipeMode,
       multiTouchActive: _chatListSwipeSession.suppressRowSwipes,
     );
-    final locallyPinned = _model.isAllFilter && _model.isLocallyPinned(chat.id);
-    final actions = _rowSwipeActions(chat, locallyPinned: locallyPinned);
+    final localPins = allowLocalPin ?? _model.isAllFilter;
+    final locallyPinned = localPins && _model.isLocallyPinned(chat.id);
+    final actions = _rowSwipeActions(
+      chat,
+      locallyPinned: locallyPinned,
+      chatList: chatList,
+      allowLocalPin: localPins,
+    );
     return ChatSwipeRow(
-      key: ValueKey(chat.id),
+      key: key ?? ValueKey(chat.id),
       rowId: chat.id,
       openRowId: _openSwipeChat,
       onOpenChanged: (id) => setState(() => _openSwipeChat = id),
       onTap: () => _openChat(chat),
-      onLongPress: desktopContextMenu ? null : () => _showChatPreview(chat),
+      onLongPress: desktopContextMenu
+          ? null
+          : () => _showChatPreview(
+              chat,
+              chatList: chatList,
+              allowLocalPin: localPins,
+            ),
       onSecondaryTapDown: desktopContextMenu
-          ? (details) => _showDesktopChatMenu(chat, details.globalPosition)
+          ? (details) => _showDesktopChatMenu(
+              chat,
+              details.globalPosition,
+              chatList: chatList,
+              allowLocalPin: localPins,
+            )
           : null,
       // Windows and Linux still expose these actions to touchscreen users.
       // ChatSwipeRow filters that path to touch so a mouse drag never moves a
@@ -3037,7 +3670,12 @@ class _ChatListViewState extends State<ChatListView>
     entry?.remove();
   }
 
-  void _showDesktopChatMenu(ChatSummary chat, Offset globalPosition) {
+  void _showDesktopChatMenu(
+    ChatSummary chat,
+    Offset globalPosition, {
+    Map<String, dynamic>? chatList,
+    bool? allowLocalPin,
+  }) {
     if (kIsWeb || !isDesktopTargetPlatform(defaultTargetPlatform)) return;
     if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
     _dismissDesktopChatMenu();
@@ -3067,8 +3705,8 @@ class _ChatListViewState extends State<ChatListView>
         isMuted: chat.isMuted,
         deleteOrLeaveLabel: _deleteOrLeaveTitle(chat),
         onDismiss: dismiss,
-        onTogglePin: () => _model.togglePin(chat),
-        onToggleLocalPin: _model.isAllFilter
+        onTogglePin: () => _model.togglePin(chat, chatList: chatList),
+        onToggleLocalPin: (allowLocalPin ?? _model.isAllFilter)
             ? () => unawaited(_model.toggleLocalPin(chat))
             : null,
         onToggleRead: () => chat.unreadCount > 0 || chat.isMarkedUnread
@@ -3113,7 +3751,11 @@ class _ChatListViewState extends State<ChatListView>
     }
   }
 
-  void _showChatPreview(ChatSummary chat) {
+  void _showChatPreview(
+    ChatSummary chat, {
+    Map<String, dynamic>? chatList,
+    bool? allowLocalPin,
+  }) {
     if (_openSwipeChat != null) setState(() => _openSwipeChat = null);
     final hasUnread = chat.unreadCount > 0 || chat.isMarkedUnread;
     final accounts = context.read<AccountStore>();
@@ -3125,7 +3767,9 @@ class _ChatListViewState extends State<ChatListView>
       showChatListPreview(
         context,
         chat: chat,
-        locallyPinned: _model.isAllFilter && _model.isLocallyPinned(chat.id),
+        locallyPinned:
+            (allowLocalPin ?? _model.isAllFilter) &&
+            _model.isLocallyPinned(chat.id),
         meName: activeAccount?.name,
         mePhoto: avatarPath == null || avatarPath.isEmpty
             ? null
@@ -3155,9 +3799,9 @@ class _ChatListViewState extends State<ChatListView>
                 ? AppStringKeys.chatListUnpin
                 : AppStringKeys.chatInfoPin,
             icon: HeroAppIcons.thumbtack,
-            onSelected: () => _model.togglePin(chat),
+            onSelected: () => _model.togglePin(chat, chatList: chatList),
           ),
-          if (_model.isAllFilter)
+          if (allowLocalPin ?? _model.isAllFilter)
             ChatListPreviewAction(
               label: _model.isLocallyPinned(chat.id)
                   ? AppStringKeys.chatListLocalUnpin
