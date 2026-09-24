@@ -817,7 +817,6 @@
     <string name="chatFirstContactPhoneCountry">手機號碼地區</string>
     <string name="chatFirstContactRegistration">註冊時間</string>
     <string name="chatFolderGroupAddTo">新增到「{value1}」</string>
-    <string name="chatFolderGroupAllFolders">全部資料夾</string>
     <string name="chatFolderGroupCreate">新增本機群組</string>
     <string name="chatFolderGroupCreateWithFolder">以此資料夾建立本機群組</string>
     <string name="chatFolderGroupDelete">刪除本機群組</string>

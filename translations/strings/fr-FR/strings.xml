@@ -817,7 +817,6 @@
     <string name="chatFirstContactPhoneCountry">Numéro de téléphone</string>
     <string name="chatFirstContactRegistration">Inscription</string>
     <string name="chatFolderGroupAddTo">Ajouter à « {value1} »</string>
-    <string name="chatFolderGroupAllFolders">Tous les dossiers</string>
     <string name="chatFolderGroupCreate">Nouveau groupe local</string>
     <string name="chatFolderGroupCreateWithFolder">Nouveau groupe local avec ce dossier</string>
     <string name="chatFolderGroupDelete">Supprimer le groupe local</string>

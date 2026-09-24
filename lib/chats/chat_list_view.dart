@@ -1068,7 +1068,8 @@ class _ChatListViewState extends State<ChatListView>
   bool _foldersInMessageList = false;
   bool _threeColumnChrome = false;
 
-  /// Null shows every folder. A group id shows only that group's folders.
+  /// Null shows folders that are not in a local group. A group id shows only
+  /// that group's folders.
   String? _folderScopeGroupId;
   List<ChatListDirectorySlot>? _directorySlots;
   double _directoryLeadingExtent = 0;
@@ -1994,9 +1995,15 @@ class _ChatListViewState extends State<ChatListView>
     final controller = widget.controller;
     // The message list owns folder browsing in Tabs mode. Clear any rail the
     // navigation column is still holding.
-    final folderChrome = widget.desktopSidebar && _foldersInMessageList
+    final showGroupColumn =
+        widget.desktopSidebar &&
+        _foldersInMessageList &&
+        _folderGroups.groups.isNotEmpty;
+    final folderChrome = !widget.desktopSidebar || !_foldersInMessageList
+        ? 0.0
+        : showGroupColumn
         ? chatListFolderChromeWidth
-        : 0.0;
+        : chatListFolderColumnWidth;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && identical(widget.controller, controller)) {
         controller?.publishSideFolders(this, null);
@@ -2024,7 +2031,8 @@ class _ChatListViewState extends State<ChatListView>
               child: Row(
                 children: [
                   if (_threeColumnChrome) ...[
-                    _localGroupColumn(scopeId),
+                    if (_folderGroups.groups.isNotEmpty)
+                      _localGroupColumn(scopeId),
                     _folderRailColumn(scopeId),
                   ],
                   Expanded(
@@ -2090,7 +2098,7 @@ class _ChatListViewState extends State<ChatListView>
         if (filter.folderId != null) filter.folderId!,
     ];
     final ids = scopeId == null
-        ? _folderGroups.directoryFolderIds(telegramIds)
+        ? _folderGroups.ungroupedDisplayOrder(telegramIds)
         : [
             for (final id
                 in _folderGroups.groupFor(scopeId)?.childFolderIds ??
@@ -2118,15 +2126,6 @@ class _ChatListViewState extends State<ChatListView>
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
               children: [
-                _directoryHeader(
-                  key: const ValueKey('chat-list-folder-scope-all'),
-                  title: AppStrings.t(AppStringKeys.chatFolderGroupAllFolders),
-                  selected: scopeId == null,
-                  compact: true,
-                  centered: true,
-                  actions: _allSectionActions(),
-                  onTap: () => _selectFolderScope(null),
-                ),
                 for (var index = 0; index < groups.length; index++)
                   _directoryHeader(
                     key: ValueKey('chat-list-group-${groups[index].id}'),
@@ -2136,7 +2135,9 @@ class _ChatListViewState extends State<ChatListView>
                     centered: true,
                     dragToken: 'g:${groups[index].id}',
                     actions: _localGroupActions(groups[index]),
-                    onTap: () => _selectFolderScope(groups[index].id),
+                    onTap: () => _selectFolderScope(
+                      scopeId == groups[index].id ? null : groups[index].id,
+                    ),
                   ),
               ],
             ),

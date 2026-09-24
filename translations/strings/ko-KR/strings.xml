@@ -817,7 +817,6 @@
     <string name="chatFirstContactPhoneCountry">전화번호 국가</string>
     <string name="chatFirstContactRegistration">가입 시기</string>
     <string name="chatFolderGroupAddTo">“{value1}”에 추가</string>
-    <string name="chatFolderGroupAllFolders">모든 폴더</string>
     <string name="chatFolderGroupCreate">로컬 그룹 만들기</string>
     <string name="chatFolderGroupCreateWithFolder">이 폴더로 로컬 그룹 만들기</string>
     <string name="chatFolderGroupDelete">로컬 그룹 삭제</string>

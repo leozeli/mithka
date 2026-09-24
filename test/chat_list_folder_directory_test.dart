@@ -371,13 +371,13 @@ void main() {
       expect(controller.sideFolders.value, isNull);
       expect(
         find.byKey(const ValueKey('chat-list-group-column')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey('chat-list-folder-column')),
         findsOneWidget,
       );
-      expect(find.text('All folders'), findsOneWidget);
+      expect(find.text('All folders'), findsNothing);
       expect(find.text('Main chat'), findsOneWidget);
       expect(find.text('Work chat'), findsNothing);
       expect(
@@ -457,6 +457,10 @@ void main() {
 
       expect(find.text('Focus'), findsOneWidget);
       expect(
+        find.byKey(const ValueKey('chat-list-group-column')),
+        findsOneWidget,
+      );
+      expect(
         tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
         tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-4'))).dx,
       );
@@ -467,7 +471,7 @@ void main() {
       );
       await tester.tap(find.textContaining('Add to'));
       await tester.pump();
-      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsOneWidget);
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsNothing);
       expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
 
       await tester.tap(find.text('Focus'));
@@ -503,12 +507,6 @@ void main() {
       expect(find.text('Work chat'), findsOneWidget);
       expect(find.text('Main chat'), findsNothing);
 
-      await tester.tap(
-        find.byKey(const ValueKey('chat-list-folder-scope-all')),
-      );
-      await tester.pump();
-      expect(find.byKey(const ValueKey('chat-list-folder-4')), findsOneWidget);
-
       await tester.tap(find.byKey(const ValueKey('chat-list-folder-all')));
       await tester.pump();
 
@@ -517,6 +515,10 @@ void main() {
         find.byKey(const ValueKey('chat-list-folder-3')),
       );
       await tester.tap(find.text('Remove from local group'));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('chat-list-folder-3')), findsNothing);
+
+      await tester.tap(find.text('Focus'));
       await tester.pump();
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('chat-list-folder-3'))).dx,
